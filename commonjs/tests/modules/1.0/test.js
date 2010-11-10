@@ -1,4 +1,4 @@
-define(["require", "exports", "module", "system"], function(require, exports, module) {
+define(["system"], function(require, exports, module) {
 
 exports.print = function () {
     var system = require("system");

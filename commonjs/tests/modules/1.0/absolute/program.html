@@ -2,16 +2,20 @@
 <html>
 <head>
     <title>Program Runner</title>
-    <script src="../../../../../apprequire.js"></script>
     <script>
-        require({
-            baseUrl: './',
+        require = {
+			location: './',
+			directories: {
+				lib: ''
+			},
+			main: 'program',
             paths: {
-                system: '../system',
-                test: '../test'
+                system: '..',
+                test: '..'
             }
-        }, ['program']);
+		};
     </script>
+    <script src="../../../../../apprequire.js"></script>
 </head>
 <body>
     <h1>Program Runner</h1>

@@ -169,6 +169,77 @@
 	};
 	
 
+	function resolveURI(path, relId) {
+		var pe = parseUri(path),
+			baseId;
+		
+		// if no slash in back, put one to normalize output
+		relId = (relId.charAt(relId.length-1) === '/') ? relId : relId + '/';
+		
+		// if relId is root'ed then only add first path of path (protocol, etc)
+		if (relId.charAt(0) === '/') {
+			// only get protocol from path else just proces relId
+			return createUri(pe, relId);
+		}
+		
+		// if relId is not root'ed (relative) look if protocol etc (parts before directory) exist, if so return relId
+		baseId = parseUri(relId);
+		baseId.directory = '';
+		if (createUri(baseId, '') !== '') {
+			return relId;
+		};
+		
+		// ok, merge path.directory and relId and add protocol etc from path...
+		baseId = pe.directory.split("/")
+		baseId = baseId.concat(relId.split("/"));
+		for (var i = 1; ((part = baseId[i]) !== UNDEF); i++) {
+			if ((part === ".") || (part === "")) {
+				baseId.splice(i, 1);
+				i -= 1;
+			} else if (part === "..") {
+				baseId.splice(i - 1, 2);
+				i -= 2;
+			} 
+		}
+		// return created globally unique id
+		return createUri(pe, baseId.join("/")) + '/';
+	}
+
+	// parseUri 1.2.2
+	// (c) Steven Levithan <stevenlevithan.com>
+	// MIT License
+	function parseUri(str) {
+		var	o = {
+				key: ["source","protocol","authority","userInfo","user","password","host","port","relative","path","directory","file","query","anchor"],
+				q: {
+					name: "queryKey",
+					parser: /(?:^|&)([^&=]*)=?([^&]*)/g
+				},
+				parser: {
+					strict: /^(?:([^:\/?#]+):)?(?:\/\/((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?))?((((?:[^?#\/]*\/)*)([^?#]*))(?:\?([^#]*))?(?:#(.*))?)/
+				}
+			},
+			m   = o.parser.strict.exec(str),
+			uri = {},
+			i   = 14;
+	
+		while (i--) uri[o.key[i]] = m[i] || "";
+	
+		uri[o.q.name] = {};
+		uri[o.key[12]].replace(o.q.parser, function ($0, $1, $2) {
+			if ($1) uri[o.q.name][$1] = $2;
+		});
+	
+		return uri;
+	}
+	
+	function createUri(pe, path) {
+		var r;
+		r = ((pe.protocol) ? (pe.protocol + '://') : '');
+		r = r + ((pe.authority) ? pe.authority : '');
+		return r + ((path) ? path : ((pe.directory) ? pe.directory : ''));
+	}
+	
 	/********************************************************************************************
 	* Module Class																				*
 	********************************************************************************************/
@@ -453,7 +524,7 @@
 			baseID = baseID.slice(0, baseID.length - 1);
 			id = baseID.concat(id.split("/"));
 		} else {
-			// assume package rooted form so concat with that
+			// assume package rooted or paths rooted form so concat with that
 			baseID = (package.id === '') ? [''] : package.id.split("/");
 			id = baseID.concat(id.split("/"));
 		}
@@ -500,14 +571,18 @@
 	 * Resolve a context rooted id (/x/y/z) to an full URI by also taking packages into account
 	 */	
 	Module.prototype.resolveURI = function(id, package) {
-		var baseID;
+		var baseID,
+			pathId;
+		
+		// get first id term
+		pathId = id.split('/')[1];
 		
 		// if no slah in front put one to normalize output
 		id = (id.charAt(0) === "/") ? id : '/'+id;
 		
 		// if base package is undefined then use current package uri
 		package = (package === UNDEF) ? this.package : package; 
-		baseID = package.uri.split("/");
+		baseID = (package.path[pathId]) ? package.path[pathId].split("/") : package.uri.split("/");
 		baseID = baseID.slice(0, baseID.length - 1);
 		return baseID.join("/") + id;
 	}
@@ -577,7 +652,8 @@
 	 * @param {string} uri The URI of the file in which this Package is declared
 	 */
 	function Package(context, package, id, uri, mapcfg) {
-		this.cfg = mapcfg;			// the config is this config until a package definition is loaded
+		this.cfg = mapcfg;												// the config is this config until a package definition is loaded
+		this.path = {};													// empty path config
 		
 		// if no parent package then parent package is self (for initialization of root module/package)
 		package = (package === null) ? this : package;
@@ -591,7 +667,7 @@
 	 * Start loading a package definition in this package
 	 */
 	Package.prototype.loadPackageDef = function(main){
-		// check if other then standard definition filename is given
+		// check if other then standard definition path/filename is given
 		main = (main) ? main + '.js' : this.resolveURI('/package.js', this);
 		
 		// insert the scripttag with the correct variables
@@ -613,7 +689,7 @@
 		this.cleanScriptTag(script);
 
 		// process the package definition
-		this.procesPackageDef(script);
+		this.procesPackageDefs(script);
 		
 		// process the module defQueue
 		this.procesModQueue(script, state);
@@ -622,31 +698,41 @@
 	/**
 	 * Process a package load by reading the package definition
 	 */
-	Package.prototype.procesPackageDef = function(script){
-		var map,
-			i, def,
-			rootPackage,
-			modules = this.context.modules;
+	Package.prototype.procesPackageDefs = function(script){
+		var def;
 
 		for (; def = defPackages.pop();){
 			// if interactive then get package def specific script var
 			if (testInteractive) script = def[1];
-			rootPackage = script._package;
-
-			rootPackage.cfg = def[0],														// get config and save also for later use
-			map = (def[0].mappings) ? def[0].mappings : {};									// if mappings config then take that else empty object
 			
-			// add lib dir to module uri location if available in cfg
-			this.uri = (def[0].directories && def[0].directories.lib) ? this.resolveURI(def[0].directories.lib+'/', this) : this.uri;
-			
-			// iterate through all the mappings to create and load new packages
-			iterate(map, function(newId, mapcfg) {
-				var uri = mapcfg.location;													// get the location of the package
-				newId = this.resolveId(newId, rootPackage);									// resolve the newId against the current package
-				modules[newId] = new Package(this.context, rootPackage, newId, uri, mapcfg);// create new package
-				modules[newId].loadPackageDef();											// and start loading its definition
-			}, this);
+			// proces config and save also for later use
+			this.procesPackageCfg(script._package, def[0]);
 		}
+	}
+	
+	Package.prototype.procesPackageCfg = function(package, cfg) {
+		var map,
+			modules = this.context.modules;
+
+		package.cfg = cfg,																	// get config and save also for later use
+		
+		// add lib dir to module uri location if available in cfg
+		this.uri = (cfg.directories && cfg.directories.lib) ? this.resolveURI(cfg.directories.lib+'/', this) : this.uri;
+		
+		// iterate through all the paths to create new path references for this package
+		map = (cfg.paths) ? cfg.paths : {};													// if paths config then take that else empty object
+		iterate(map, function(newId, pathcfg) {
+			package.path[newId] = resolveURI(package.uri, pathcfg);							// resolve the newId against the current package
+		}, this);
+		
+		// iterate through all the mappings to create and load new packages
+		map = (cfg.mappings) ? cfg.mappings : {};											// if mappings config then take that else empty object
+		iterate(map, function(newId, mapcfg) {
+			var uri = mapcfg.location;														// get the location of the package
+			newId = this.resolveId(newId, package);											// resolve the newId against the current package
+			modules[newId] = new Package(this.context, package, newId, uri, mapcfg);		// create new package
+			modules[newId].loadPackageDef();												// and start loading its definition
+		}, this);
 	}
 
 	/********************************************************************************************
@@ -657,8 +743,8 @@
 	 * Called when a module in a loaded modules javascript file is declared/defined
 	 */
 	function declare(id, deps, delayFn) {
-		var commentRegExp = /(\/\*([\s\S]*?)\*\/|\/\/(.*)$)/mg,
-			cjsRequireRegExp = /require\(["']([\w-_\.\/]+)["']\)/g;
+		var commentRegExp = /(\/\*([\s\S]*?)\*\/|\/\/(.*)$)/mg;
+		var	cjsRequireRegExp = /require\(["']([\w-_\.\/]+)["']\)/g;
 
 		//Allow for anonymous functions
 		if (typeof id !== 'string') {
@@ -726,15 +812,22 @@
 			m,
 			i,
 			defaultcfg = {
-				name: 'main',
-				deps : []
+				location: '',
+				directories: {
+					lib: './lib'
+				},
+				waitSeconds: 10000,
+				baseUrlMatch: /apprequire\.js/i
 			},			
-			rePkg = (cfg.baseUrlMatch) ? cfg.baseUrlMatch : /apprequire\.js/i;
 			
-		// set waitseconds if requested else standard is 10000 msec = 10 sec
-		context.timeout = (cfg.waitSeconds) ? cfg.waitSeconds: 10000;
+		// if no config then create clean objects and after that mixin the default items if not existing
+		cfg = (cfg) ? cfg : defaultcfg;
+		mixin(cfg, defaultcfg);
 		
-		//Figure out baseUrl and if there also the 'data-main' attribute value. Get it from the script tag with apprequire.js in it.
+		// set waitseconds
+		context.timeout = cfg.waitSeconds;
+		
+		//Figure out if there is a 'data-main' attribute value. Get it from the script tag with cfg.baseUrlMatch as regexp.
 		for (i = scriptList.length - 1; i > -1 && (script = scriptList[i]); i--) {
 			//Look for a data-main attribute to set main script for the page to load.
 			dataMain = script.getAttribute('data-main');
@@ -742,30 +835,31 @@
 			//Using .src instead of getAttribute to get an absolute URL.
 			src = script.src;
 			if (src) {
-				m = src.match(rePkg);
+				m = src.match(cfg.baseUrlMatch);
 				if (m) break;
 			}
 		}
-		src = src.split("/");
-		src = src.slice(0, src.length - 1);
-		src = src.join("/") + '/';
-
-		// if no config then create clean objects and after that mixin the default items if not existing
-		cfg = (cfg) ? cfg : defaultcfg;
-		mixin(cfg, defaultcfg);
 		
+		// dataMain config has preference over cfg location tag
+		src = (dataMain) ?  resolveURI(global.location.href, dataMain) : resolveURI(global.location.href, cfg.location);
+
 		// create root/main package/module. Also set (context, package, id, uri, mapcfg)
-		context.modules[''] = context.package = new Package(context, null, '', (cfg.baseUrl) ? cfg.baseUrl : src, cfg);
+		context.modules[''] = context.package = new Package(context, null, '', src, cfg);
 		
 		// initialize global hooks
 		initGlobals();
 		
 		// load Main script (if requested) in main package
 		if (dataMain) {
+			// load root package config from dataMain location
 			context.package.loadPackageDef(dataMain);
+		} else {
+			// initialize root package with config
+			context.package.procesPackageCfg(context.package, cfg);
+			if (cfg.main) global.require(cfg.main);
 		}; 			
     }
-
+	
 	/**
 	 * create all global hooks
 	 */
