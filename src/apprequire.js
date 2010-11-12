@@ -168,46 +168,57 @@
 		}
 	};
 	
-
-	function resolveURI(path, relId) {
-		var pe = parseUri(path),
-			baseId;
+	/**
+	 * Apply the offset uri to the base uri (relative etc..)
+	 * @param {uri} base The basepath to resolve to
+	 * @param {uri} offset The offset to apply to the base path
+	 */
+	function resolveUri(base, offset) {
+		// normalize end character
+		if ((offset.charAt(offset.length-1) === '/') && (offset.length > 1)) offset = offset.substr(0, offset.length-1);
 		
-		// if no slash in back, put one to normalize output
-		relId = (relId.charAt(relId.length-1) === '/') ? relId : relId + '/';
+		// split base in seperate uri parts
+		var pe = parseUri(base),
+			baseId, part;
 		
-		// if relId is root'ed then only add first path of path (protocol, etc)
-		if (relId.charAt(0) === '/') {
-			// only get protocol from path else just proces relId
-			return createUri(pe, relId);
+		// if offset is root'ed then only add first path of path (protocol, etc)
+		if (offset.charAt(0) === '/') {
+			// only get protocol from path else just proces offset
+			return createUri(pe, offset);
 		}
 		
-		// if relId is not root'ed (relative) look if protocol etc (parts before directory) exist, if so return relId
-		baseId = parseUri(relId);
+		// if offset is not root'ed (i.e. relative or hosted) look if protocol etc (parts before directory) exist (i.e. hosted, if so return offset
+		baseId = parseUri(offset);
 		baseId.directory = '';
 		if (createUri(baseId, '') !== '') {
-			return relId;
+			return offset;
 		};
 		
-		// ok, merge path.directory and relId and add protocol etc from path...
-		baseId = pe.directory.split("/")
-		baseId = baseId.concat(relId.split("/"));
-		for (var i = 1; ((part = baseId[i]) !== UNDEF); i++) {
-			if ((part === ".") || (part === "")) {
+		// ok, merge path.directory and offset and add protocol etc from path...
+		baseId = (pe.path==='') ? [] : pe.path.split("/");
+		baseId = baseId.concat(offset.split("/"));
+		for (var i = 0; ((part = baseId[i]) !== UNDEF); i++) {
+			if ((part === ".") || ((part === "") && (i > 0))) {
 				baseId.splice(i, 1);
 				i -= 1;
 			} else if (part === "..") {
 				baseId.splice(i - 1, 2);
 				i -= 2;
+				if (i < 0) return createUri(pe, '');
 			} 
 		}
 		// return created globally unique id
-		return createUri(pe, baseId.join("/")) + '/';
+		return createUri(pe, baseId.join("/"));
 	}
 
-	// parseUri 1.2.2
-	// (c) Steven Levithan <stevenlevithan.com>
-	// MIT License
+	/**
+	 * Get the different parts of an uri
+	 * Inspired by parseUri 1.2.2
+	 * (c) Steven Levithan <stevenlevithan.com>
+	 * MIT License
+	 * @param {uri} str The uri to split
+	 * @return {object} A splitted uri
+	 */
 	function parseUri(str) {
 		var	o = {
 				key: ["source","protocol","authority","userInfo","user","password","host","port","relative","path","directory","file","query","anchor"],
@@ -233,6 +244,12 @@
 		return uri;
 	}
 	
+	/**
+	 * Return a 
+	 * @param {object} pe The path elements created by parseUri
+	 * @param {string} path The path string to use in the new Uri. If not defined pe.directory will be used as path part.
+	 * @return {string} Combined Uri
+	 */
 	function createUri(pe, path) {
 		var r;
 		r = ((pe.protocol) ? (pe.protocol + '://') : '');
@@ -841,7 +858,7 @@
 		}
 		
 		// dataMain config has preference over cfg location tag
-		src = (dataMain) ?  resolveURI(global.location.href, dataMain) : resolveURI(global.location.href, cfg.location);
+		src = (dataMain) ?  resolveUri(global.location.href, dataMain) : resolveUri(global.location.href, cfg.location);
 
 		// create root/main package/module. Also set (context, package, id, uri, mapcfg)
 		context.modules[''] = context.mpackage = new Package(context, null, '', src, cfg);
