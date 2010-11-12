@@ -1,0 +1,30 @@
+{
+    "projectName": "AppRequire",
+    "licenseText": "Copyright(c) 2010 Sander Tolsma/TTC\nlicensing@tolsma.net\nhttp://code.tolsma.net/licenses",
+    "packages": [{
+            "name"  : "Platform Util",
+            "target": "pkgs/apprequire.js",
+            "id"    : "apprequire.0.2",
+            "files" : [
+                {"path": "src/",      "name": "apprequire.js"}
+            ]
+        }
+    ],
+    "builds": [
+        {
+            "name": "AppRequire",
+            "target": "apprequire.js",
+            "debug": true,
+            "files" : [
+                {"path": "src/",      "name": "apprequire.js"}
+            ]
+		},{
+            "name": "AppRequire",
+            "target": "apprequire.js",
+            "debug": false,
+            "files" : [
+                {"path": "src/",      "name": "apprequire.js"}
+            ]
+        }
+    ]
+}
