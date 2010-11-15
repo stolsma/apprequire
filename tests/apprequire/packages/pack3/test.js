@@ -4,5 +4,5 @@
 
 define(function (require, exports, module) {
     //Do setup work here
-	exports.test = 'This is the test module from lib/test.js so this must be wrongly loaded!!!';
+	exports.test = 'This is the test module from package/pack3/test.js so this must be wrongly loaded!!!';
 });

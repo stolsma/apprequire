@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Program Runner</title>
+    <script>
+		// because of use of data-main together with apprequire debug version, baseUrlMatch needs to be set...
+		require = {
+			baseUrlMatch: /apprequire-debug\.js/i
+		};
+    </script>
+    <script data-main="../lib/main" src="../../../apprequire-debug.js"></script>
+</head>
+<body>
+    <h1>Basic Apprequire Test (Packages, Modules, Paths)</h1>
+	<p>See console log for results</p>
+</body>
+</html>

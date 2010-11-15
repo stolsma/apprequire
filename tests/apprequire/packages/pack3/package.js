@@ -52,6 +52,12 @@ require.package({
 		web: 'http://code.tolsma.net'
 	}],
 
+	// for the paths test...
+	paths: {
+		"assert": '../..',
+		"test": '../..'
+	},
+	
 	// mapping from id to other packages. In this case empty
 	mappings: {
 	}
@@ -67,6 +73,6 @@ define(function (require, exports, module) {
 /**
  * define a module in pack3
  */
-define('mod3test', function (require, exports, module) {
+define('mod3test', ['omega', 'test', 'assert'], function (require, exports, module) {
 	exports.test = 'test module for package pack3';
 });

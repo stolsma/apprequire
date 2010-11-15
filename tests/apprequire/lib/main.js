@@ -45,7 +45,7 @@ require.package({
 	description: 'This is the main package definition',				// description of this package
 	homepage: 'http://code.tolsma.net',								// homepage with descriptions of this package and for example news about new versions..
 	
-	main: 'main.js',												// main module that represents the package
+	main: 'main',													// main module that represents the package
 	directories: {
 		lib: '.'													// root directory of the module files relative to this file.. (in this case the lib dir)
 	},
@@ -55,7 +55,13 @@ require.package({
 		email: 'stolsma@tolsma.net',
 		web: 'http://code.tolsma.net'
 	}],
-
+	
+	// for the paths test...
+	paths: {
+		"assert": '..',
+		"test": '..'
+	},
+	
 	// mapping from root id to the location of the system packages.
 	mappings: {
 		'pack1': {

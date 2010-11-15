@@ -257,6 +257,28 @@
 		return r + ((path) ? path : ((pe.directory) ? pe.directory : ''));
 	}
 	
+	/**
+	 * Cut the last term from a URI string
+	 * @param {string} uri The path string to cut the last term off.
+	 * @return {string} Path without last term
+	 */
+	function cutLast(uri){
+		uri = uri.split('/');
+		uri = uri.slice(0, uri.length-1);
+		return uri.join("/"); 
+	}
+	
+	/**
+	 * Cut the last term from a URI string and return it
+	 * @param {string} uri The path string to cut the last term off.
+	 * @return {string} Last term
+	 */
+	function getLast(uri){
+		uri = uri.split('/');
+		uri = uri.slice(uri.length-1);
+		return uri[0];
+	}
+	
 	/********************************************************************************************
 	* Module Class																				*
 	********************************************************************************************/
@@ -309,7 +331,7 @@
 		if (deps === UNDEF) deps = [];
 		
 		// normalize id if not empty
-		id = (id === '') ? id : this.resolveId(id);
+		id = (id === '') ? id : ((id.charAt(0) === '.') ? resolveUri(cutLast(this.id), id) : resolveUri(this.parentPackage.id, id));
 		
 		//*****************************************************************************************************************************************
 		// Aanpassen  !!!!  Specificatie zegt dat er een error ge-'throw'ed moet worden als de exports van de module niet bestaat
@@ -317,11 +339,15 @@
 		
 		if (!this.context.modules[id] || this.context.modules[id].createFn) {
 			// requested module not there or id = '' (ensure call)
-			var result = [],
-				ids = deps.concat(id);
-			for(; id = ids.pop();){
-				result.push([id, this]);
-			}
+			var result = [], i, dep;
+			
+			for (i=0; dep=deps[i]; i++) {
+				// normalize dependancy id relative to the module requiring it
+				dep = (dep.charAt(0) === '.') ? resolveUri(cutLast(this.id), dep) : resolveUri(this.parentPackage.id, dep);
+				result.push([dep, this]);
+			};
+			// also push the requesting module id to be sure it is there
+			result.push([id, this]);
 			
 			this.loadModules(result, delayFn); // ensure callback is called when all modules are loaded
 			return UNDEF;
@@ -400,6 +426,7 @@
 						var dep;
 						// walk through the dependencies to check if the module dependencies already exist and if not load them
 						for (i=0; dep=mod.deps[i]; i++) {
+							// if the dependent id doesnt exists push for loading
 							if (!mod.context.modules[dep]) deps.push([dep, mod]);
 						};
 					}
@@ -481,84 +508,65 @@
 	}
 	
 	Module.prototype.define = function(deps, creatorFn) {
-		this.deps = this.resolveIds(deps);
+		var i, dep;
+		for (i=0; dep=deps[i]; i++) {
+			// normalize dependancy id relative to the module requiring it
+			dep = (dep.charAt(0) === '.') ? resolveUri(cutLast(this.id), dep) : resolveUri(this.parentPackage.id, dep);
+			this.deps.push(dep);
+		};
 		this.creatorFn = creatorFn;
 	}
 
 	/**
 	 * Local module/transport load function. Resolve id to full path id's. Checks if module is already loading and 
 	 * if not defines script tag with this.createModule as callback function if file loaded. 
-	 * @param {array} ids Array of module id and ParentModule Arrays to be loaded
+	 * @param {array} ids Array of [normalized module ids, requestingModule] to be loaded
 	 * @param {function} fn Callback function to be called when all referenced id's (with dependencies) are defined and available
 	 */
 	Module.prototype.loadModules = function(ids, fn) {
 		var mod,
 			id,
-			rootPackage,
+			pPackage,
 			uri;
 		
+		console.log(ids);
 		for (; mod = ids.pop();){
-			// resolve context rooted (/x/y/z), package rooted (x/y/z) and module relative (./y/z) to context rooted id's
-			id = this.resolveId(mod[0], mod[1]);
+//			pPackage = mod[1].parentPackage;
+			id = mod[0];
+			
+			// if module doesn't exist already 
 			if (!this.context.modules.hasOwnProperty(id)){
-				uri = this.resolveURI(id, mod[1].parentPackage);
-				this.context.modules[id] = new Module(this.context, mod[1].parentPackage, id, uri);
-				this.insertScriptTag(id, uri + ".js", mod[1].parentPackage, this.procesQueues, this);
+				// get parent package of this id
+				pPackage = this.resolveRootPackage(id);
+				
+				// get url path
+				uri = pPackage.searchPath(id);
+				
+				// create module and load corresponding script
+				this.context.modules[id] = new Module(this.context, pPackage, id, cutLast(uri));
+				this.insertScriptTag(id, uri + ".js", pPackage, this.procesQueues, this);
 			}
 		}
 	}
-
-	/**
-	 * Resolve an array of id's
-	 * @return {array} Array of resolved id's
-	 */	
-	Module.prototype.resolveIds = function(ids) {
-		var result = [];
+	
+	Module.prototype.searchPath = function(id) {
+		// cut id of parent package id
+		id = id.replace(this.id, '');
+		if (id.charAt(0) === '/') {
+			id = id.substr(1);
+		}
 		
-		each(ids, function(id){
-			result.push(this.resolveId(id));
-		}, this);
-		
-		return result;
+		// only return path of requested path id else return uri of id relative to parent package   
+		return (this.path[id]) ? resolveUri(this.path[id], id.split("/").pop()) : resolveUri(this.uri, id);
 	}
 
 	/**
 	 * Resolve a context rooted (/x/y/z), package rooted (x/y/z) and module relative ./y/z or ../y/z) id to a context rooted id (/x/y/z)
 	 */	
 	Module.prototype.resolveId = function(id, parentPackage) {
-		var baseID,
-			part;
-		
 		// if package is defined then use that else use this modules package
 		parentPackage = (parentPackage === UNDEF) ? this.parentPackage : parentPackage;	
-			
-		if (id.charAt(0) === "/") {
-			// already in context rooted form, only split for . and .. checking
-			id = id.split("/");
-		} else if (id.charAt(0) === ".") {
-			// lop off the last part of this module's id and concat with given id without the dot 
-			baseID = (this.id === '') ? ['',''] : this.id.split("/");
-			baseID = baseID.slice(0, baseID.length - 1);
-			id = baseID.concat(id.split("/"));
-		} else {
-			// assume package rooted or paths rooted form so concat with that
-			baseID = (parentPackage.id === '') ? [''] : parentPackage.id.split("/");
-			id = baseID.concat(id.split("/"));
-		}
-		
-		// remove inline . and .. items as is described in convention
-		for (var i = 0; ((part = id[i]) !== UNDEF); i++) {
-			if (part === ".") {
-				id.splice(i, 1);
-				i -= 1;
-			} else if (part === "..") {
-				id.splice(i - 1, 2);
-				i -= 2;
-			}
-		}
-		// return created globally unique id
-		var dummy = id.join("/");
-		return dummy;
+		return resolveUri(parentPackage.id, id);
 	}
 
 	/**
@@ -588,20 +596,9 @@
 	 * Resolve a context rooted id (/x/y/z) to an full URI by also taking packages into account
 	 */	
 	Module.prototype.resolveURI = function(id, parentPackage) {
-		var baseID,
-			pathId;
-		
-		// get first id term
-		pathId = id.split('/')[1];
-		
-		// if no slah in front put one to normalize output
-		id = (id.charAt(0) === "/") ? id : '/'+id;
-		
 		// if base package is undefined then use current package uri
-		parentPackage = (parentPackage === UNDEF) ? this.parentPackage : parentPackage; 
-		baseID = (parentPackage.path[pathId]) ? parentPackage.path[pathId].split("/") : parentPackage.uri.split("/");
-		baseID = baseID.slice(0, baseID.length - 1);
-		return baseID.join("/") + id;
+		parentPackage = (parentPackage === UNDEF) ? this.parentPackage : parentPackage;
+		return resolveUri(cutLast(parentPackage.uri), id); 
 	}
 
 	/**
@@ -683,12 +680,12 @@
 	/**
 	 * Start loading a package definition in this package
 	 */
-	Package.prototype.loadPackageDef = function(main){
+	Package.prototype.loadPackageDef = function(file){
 		// check if other then standard definition path/filename is given
-		main = (main) ? main + '.js' : this.resolveURI('/package.js', this);
+		file = (file) ? file + '.js' : this.resolveURI('package.js', this);
 		
-		// insert the scripttag with the correct variables
-		this.insertScriptTag(this.id, main, this, this.procesQueues, this);
+		// insert the scripttag with the correct variables (id, uri, parentPackage, cb, scope)
+		this.insertScriptTag(this.id, file, this, this.procesQueues, this);
 	}
 	
 	/**
@@ -734,12 +731,12 @@
 		_package.cfg = cfg,																	// get config and save also for later use
 		
 		// add lib dir to module uri location if available in cfg
-		this.uri = (cfg.directories && cfg.directories.lib) ? this.resolveURI(cfg.directories.lib+'/', this) : this.uri;
+		this.uri = (cfg.directories && cfg.directories.lib) ? this.resolveURI(cfg.directories.lib, this) : this.uri;
 		
 		// iterate through all the paths to create new path references for this package
 		map = (cfg.paths) ? cfg.paths : {};													// if paths config then take that else empty object
 		iterate(map, function(newId, pathcfg) {
-			_package.path[newId] = resolveURI(_package.uri, pathcfg);							// resolve the newId against the current package
+			_package.path[newId] = resolveUri(_package.uri, pathcfg);						// resolve the newId against the current package
 		}, this);
 		
 		// iterate through all the mappings to create and load new packages
@@ -829,6 +826,7 @@
 			m,
 			i,
 			defaultcfg = {
+				main: '',
 				location: '',
 				directories: {
 					lib: './lib'
@@ -858,8 +856,9 @@
 		}
 		
 		// dataMain config has preference over cfg location tag
-		src = (dataMain) ?  resolveUri(global.location.href, dataMain) : resolveUri(global.location.href, cfg.location);
-
+		src = (dataMain) ?  resolveUri(cutLast(global.location.href), dataMain) : resolveUri(cutLast(global.location.href), cfg.location);
+		var mainId = (dataMain) ? getLast(dataMain): getLast(cfg.main); 
+		
 		// create root/main package/module. Also set (context, package, id, uri, mapcfg)
 		context.modules[''] = context.mpackage = new Package(context, null, '', src, cfg);
 		
@@ -873,7 +872,7 @@
 		} else {
 			// initialize root package with config
 			context.mpackage.procesPackageCfg(context.mpackage, cfg);
-			if (cfg.main) global.require(cfg.main);
+			if (mainId !== '') global.require(mainId);
 		}; 			
     }
 	

@@ -45,6 +45,12 @@
 define(['test', './assertions', './reporting'], function (require, exports, module) {
     var test = require('test');
 	
-	test.run(require('./assertions'));
-	test.run(require('./reporting'));
+	test.run({
+		"test assertion loading": function(){
+			require('./assertions');
+		},
+		"test reporting loading": function(){
+			require('./reporting');
+		}
+	});
 });
