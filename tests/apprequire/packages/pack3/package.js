@@ -41,7 +41,7 @@ require.package({
 	description: 'This is pack3',									// description of this package
 	homepage: 'http://code.tolsma.net',								// homepage with descriptions of this package and for example news about new versions..
 	
-	main: 'package.js',												// main module that represents the package
+	main: 'package',												// main module that represents the package
 	directories: {
 		lib: '.'													// root directory of the module files relative to this file.. (in this case the . dir)
 	},

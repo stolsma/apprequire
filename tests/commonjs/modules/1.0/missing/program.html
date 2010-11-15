@@ -6,13 +6,14 @@
         require = {
 			location: './',
 			directories: {
-				lib: ''
+				lib: '.'
 			},
 			main: 'program',
             paths: {
                 system: '..',
                 test: '..'
-            }
+            },
+			waitSeconds: 2000					// changed from default to 2 sec to show timeout
 		};
     </script>
     <script src="../../../../../apprequire-debug.js"></script>

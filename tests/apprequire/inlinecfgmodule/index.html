@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Program Runner</title>
+    <script>
+		// because of use of data-main together with apprequire debug version, baseUrlMatch needs to be set...
+		require = {
+			baseUrlMatch: /apprequire-debug\.js/i,
+			name: 'main',													// unique identifier of this package
+			description: 'This is the main package definition',				// description of this package
+			homepage: 'http://code.tolsma.net',								// homepage with descriptions of this package and for example news about new versions..
+			
+			main: 'mainmod',												// main module that represents the package
+			location: '..',
+			directories: {
+				lib: 'lib'													// root directory of the module files relative to this file.. (in this case the lib dir)
+			},
+			
+			maintainers: [{													// owner(s) of the code in this package
+				name: 'Sander Tolsma',
+				email: 'stolsma@tolsma.net',
+				web: 'http://code.tolsma.net'
+			}],
+			
+			// for the paths test...
+			paths: {
+				"assert": '..',
+				"test": '..'
+			},
+			
+			// mapping from root id to the location of the system packages.
+			mappings: {
+				'pack1': {
+					location: '/webapps/examples/require/tests/apprequire/packages/pack1/',	// location of this package
+					name: 'pack1', 											// unique identifier of this package
+					version: '0.1.0'										// the version of this package
+				},
+				'pack2': {
+					location: '/webapps/examples/require/tests/apprequire/packages/pack2/',	// location of this package
+					name: 'pack2', 											// unique identifier of this package
+					version: '0.1.0'										// the version of this package
+				}
+			}
+		};
+    </script>
+    <script src="../../../apprequire-debug.js"></script>
+</head>
+<body>
+    <h1>Basic Apprequire Test via inline config (Packages, Modules, Paths)</h1>
+	<p>See console log for results</p>
+</body>
+</html>

@@ -27,44 +27,19 @@
 	SUCH DAMAGE.
 
 	Version Log:
-	0.1		02-10-2010	Creation of first skelleton version of general package tests.
+	0.1		02-10-2010	Creation of first skelleton version of general tests.
 \-------------------------------------------------------------------------------------*/
 /**
  * Testing an implementation of CommonJS modules and Package loading
  * Based on CommonJS (http://www.commonjs.org).
  * For documentation how to use this: http://code.tolsma.net
+ *
+ * This file is loaded first by require after loading and initializing the apprequire.js file
  */
-
-require.package({
-	name: 'pack2', 													// unique identifier of this package
-	version: '0.1.0',												// the version of this package
-	description: 'This is pack2 that maps pack3 to remote pack3',	// description of this package
-	homepage: 'http://code.tolsma.net',								// homepage with descriptions of this package and for example news about new versions..
-	
-	main: 'package',												// main module that represents the package
-	directories: {
-		lib: '.'													// root directory of the module files relative to this file.. (in this case the . dir)
-	},
-	
-	maintainers: [{													// owner(s) of the code in this package
-		name: 'Sander Tolsma',
-		email: 'stolsma@tolsma.net',
-		web: 'http://code.tolsma.net'
-	}],
-
-	// mapping from id to other packages. In this case pack3
-	mappings: {
-		'pack3': {
-			location: '/webapps/examples/require/tests/apprequire/packages/pack3/',	// location of this package
-			name: 'pack3', 											// unique identifier of this package
-			version: '0.1.0'										// the version of this package
-		}
-	}
-});
-
+ 
 /**
- * define the exports of the root package module
+ * define the global exports module
  */
-define(function (require, exports, module) {
-	exports.test = 'Main module for package pack2';
+define(['./test/run'], function (require, exports, module) {
+		exports.test = 'Main module for root';
 });

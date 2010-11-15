@@ -28,7 +28,7 @@
 
 	Version Log:
 	0.1		02-10-2010	Creation of first skelleton version of apprequire
-	0.2		07-11-2010	Changes in module/package id and uri writing
+	0.2		15-11-2010	Changes in module/package id and uri writing
 \-------------------------------------------------------------------------------------*/
 /**
  * Testing an implementation of CommonJS modules and Package loading
@@ -50,14 +50,12 @@
 		testInteractive = !!global.ActiveXObject,				// test if IE for onload workaround... (
 		
 		// end of shortcuts, define real vars... ;-)
-		context = {												// main context
-			mpackage: null,											// main package/module
-			modules: {},											// All defined packages/modules in this context
-			timeout: 6000											// 6 seconds scriptag load timeout before error
-		},
+		modules = {},											// All defined packages/modules
+		timeout,												// after how many msecs will loading timeout
 		scripts = [],											// current loading scripts...
 		defQueue = [],											// modules waiting to be defined
-		defPackages = [];										// package configs waiting to be used
+		defPackages = [],										// package configs waiting to be used
+		root = null;											// root package
 
 	/**
 	 * Returns true if the passed value is a JavaScript array, otherwise false.
@@ -285,31 +283,27 @@
 
 	/**
 	 * Module class definition
-	 * @param {object} context The loaders context this module is working in
 	 * @param {Package object} package The parent Package this module is working in
-	 * @param {string} id The context global id of this Module
+	 * @param {string} id The global id of this Module
 	 * @param {string} uri The URI of the file in which this module is declared
 	 */
-	function Module(context, parentPackage, id, uri) {
-		this.context = context;
+	function Module(parentPackage, id, uri) {
 		this.parentPackage = parentPackage;
 		this.id = id;
 		this.uri = uri;
 		
-		this.exports = null;
+		this.exports = {};
 		this.creatorFn = null;
 		this.module = null;
 		this.deps = [];
+		this.defined = false;
 	};
 	
 	/**
 	 * Local require function
-	 * Five 'legal' possible uses:
-	 * 	- id, deps, delayFn (ensure)
-	 *	- id, delayFn (ensure)
-	 *	- deps, delayFn (ensure)
+	 * Two 'legal' possible uses:
+	 * 	- deps, delayFn (ensure)
 	 *	- id (require)
-	 *	- id, deps (require, not following CommonJS)
 	 */
 	 
 	 //***********************************************************************************************************************
@@ -333,12 +327,8 @@
 		// normalize id if not empty
 		id = (id === '') ? id : ((id.charAt(0) === '.') ? resolveUri(cutLast(this.id), id) : resolveUri(this.parentPackage.id, id));
 		
-		//*****************************************************************************************************************************************
-		// Aanpassen  !!!!  Specificatie zegt dat er een error ge-'throw'ed moet worden als de exports van de module niet bestaat
-		//*****************************************************************************************************************************************
-		
-		if (!this.context.modules[id] || this.context.modules[id].createFn) {
-			// requested module not there or id = '' (ensure call)
+		if (id === '') {
+			// id = '' so it is an ensure call
 			var result = [], i, dep;
 			
 			for (i=0; dep=deps[i]; i++) {
@@ -346,15 +336,19 @@
 				dep = (dep.charAt(0) === '.') ? resolveUri(cutLast(this.id), dep) : resolveUri(this.parentPackage.id, dep);
 				result.push([dep, this]);
 			};
-			// also push the requesting module id to be sure it is there
-			result.push([id, this]);
 			
 			this.loadModules(result, delayFn); // ensure callback is called when all modules are loaded
 			return UNDEF;
-		}
+		} else if (!modules[id]) {
+			// module doesn't exist so throw error
+			throw "Module: " + id + " doesn't exist!!";
+		} else if (!modules[id].creatorFn) {
+			// module exists but is not loaded (when error loading file)
+			throw "Module: " + id + " is not loaded or created!!";
+		}		
 		
 		// just a normal require call and return exports if requested module 
-		return this.context.modules[id].exports;
+		return modules[id].exports;
 	}
 	
 	/**
@@ -379,18 +373,25 @@
 	 * Callled when a 'module' or 'transport' script file is loaded and declared inline module or transport modules need to be parsed
 	 * for dependencies. If all dependencies are available all not parsed modules can be parsed with correct dependency paths.
 	 * @param {ScriptDom} script The script dom object with 'extra' added properties (_done, etc)
+	 * @param {bool} state True if scriptfile is loaded correctly, false if something went wrong
 	 */
-	Module.prototype.procesModQueue = function(script) {
+	Module.prototype.procesModQueue = function(script, state) {
 		// move all new modules to modulelist
-		var modules = this.context.modules,
-			def,
+		var def,
 			id,
 			rootPackage,
 			i;
 			
+		// handle erors in loading
+		if (!state) {
+			// set corresponding module to empty
+			modules[script._moduleId].define([], null);		// no deps, no creatorfn
+			modules[script._moduleId].defined = true;		// but defined
+		}
+		
 		for (i=0; def = defQueue[i]; i++){
 			// if interactive then get module def specific script var
-			if (testInteractive) script = def[3];
+			if (testInteractive && (def[3] !== null)) script = def[3];
 			rootPackage = script._package;
 			
 			// get correct id.
@@ -404,7 +405,7 @@
 			
 			// if module doesn't exist then create one 
 			if (!modules[id]) {
-				modules[id] = new Module(this.context, rootPackage, id, script.src);
+				modules[id] = new Module(rootPackage, id, script.src);
 			}
 			
 			// check first if the module's creatorFn already is defined, that means double define, and thats not allowed !!
@@ -420,14 +421,14 @@
 			var deps = [];
 			iterate(modules, function(key, mod) {
 				// if exports is defined then module is ready so skip
-				if (mod.exports === null) {
+				if (!mod.defined) {
 					// dependencies defined ??
 					if (mod.deps.length > 0) {
 						var dep;
 						// walk through the dependencies to check if the module dependencies already exist and if not load them
 						for (i=0; dep=mod.deps[i]; i++) {
 							// if the dependent id doesnt exists push for loading
-							if (!mod.context.modules[dep]) deps.push([dep, mod]);
+							if (!modules[dep]) deps.push([dep, mod]);
 						};
 					}
 				}
@@ -440,7 +441,7 @@
 		// while loading dependency scripts or all scripts loaded try to evaluate all elegible modules by calling createFn
 		iterate(modules, function(key, mod) {
 			// if exports is not defined and there is a creatorFn then look if you can create the module
-			if ((mod.exports === null) && (mod.creatorFn !== null)) {
+			if (!mod.defined && (mod.creatorFn !== null)) {
 				// recursive 
 				mod.create();
 			}
@@ -455,34 +456,46 @@
 	 // circular dependency (a needs b and b needs a) needs to be solved in following code !!!)
 	 //***********************************************************************************************************************
 	 
-	Module.prototype.create = function() {
+	Module.prototype.create = function(recursion) {
 		var dep,
 			i;
-			
-		// if already created then don't need to do anything so return true;
-		if (this.exports !== null) return true;
+		
+		// start recursionlist
+		recursion = (recursion) ? recursion : {};
+		
+		// if already created then don't need to do anything so return true, if recursion give true back too;
+		if (this.defined || recursion[this.id]) return true;
 		
 		// not created but also not defined so return false
 		if (this.creatorFn === null) return false;
 		
+		// add this module to already in recursion (to solve cyclic dependency)
+		recursion[this.id] = true;
 		// walk through the dependencies to check if the module dependencies already exist and if not load them
 		for (i=0; dep=this.deps[i]; i++) {
-			var depMod = this.context.modules[dep];
+			var depMod = modules[dep];
 			if (depMod === UNDEF) {
 				// dependency module does not exist so return with false
 				return false;
-			} else if (depMod.exports === null) {
+			} else if (!depMod.defined) {
 				// dependency module is not created and it returns that it can't be created then return with false too 
-				if (!depMod.create()) return false;
+				if (!depMod.create(recursion)) return false;
 			};
 		};
+		delete recursion[this.id];
+		
 		// ah, all dependency modules are ready, create mine!!
 		// need reference to require function
 		// need reference to exports
 		// need reference to module object with id and uri of this module
 		// do mixin of result and this.exports
-		this.exports = {};
 		mixin(this.exports, this.creatorFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
+		this.defined = true;
+		
+		// see if this module is also the main of the parent package. If so, set this module as main package module.
+		if (this.id === this.parentPackage.mainId) {
+			this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps);
+		}
 		
 		// this module is defined so return true
 		return true;
@@ -491,7 +504,7 @@
 	Module.prototype.returnRequire = function (){
 		var that = this;
 		return function(){
-			return context.mpackage.require.apply(that, arguments);
+			return that.require.apply(that, arguments);
 		}
 	}
 
@@ -529,13 +542,12 @@
 			pPackage,
 			uri;
 		
-		console.log(ids);
 		for (; mod = ids.pop();){
 //			pPackage = mod[1].parentPackage;
 			id = mod[0];
 			
 			// if module doesn't exist already 
-			if (!this.context.modules.hasOwnProperty(id)){
+			if (!modules.hasOwnProperty(id)){
 				// get parent package of this id
 				pPackage = this.resolveRootPackage(id);
 				
@@ -543,7 +555,7 @@
 				uri = pPackage.searchPath(id);
 				
 				// create module and load corresponding script
-				this.context.modules[id] = new Module(this.context, pPackage, id, cutLast(uri));
+				modules[id] = new Module(pPackage, id, cutLast(uri));
 				this.insertScriptTag(id, uri + ".js", pPackage, this.procesQueues, this);
 			}
 		}
@@ -561,7 +573,7 @@
 	}
 
 	/**
-	 * Resolve a context rooted (/x/y/z), package rooted (x/y/z) and module relative ./y/z or ../y/z) id to a context rooted id (/x/y/z)
+	 * Resolve package rooted (x/y/z) and module relative ./y/z or ../y/z) id to a global rooted id (x/y/z)
 	 */	
 	Module.prototype.resolveId = function(id, parentPackage) {
 		// if package is defined then use that else use this modules package
@@ -570,7 +582,7 @@
 	}
 
 	/**
-	 * Resolve from a context rooted id (/x/y/z) a root packages (i.e. parent package of module)
+	 * Resolve from a rooted id (/x/y/z) a root packages (i.e. parent package of module)
 	 */	
 	Module.prototype.resolveRootPackage = function(id) {
 		var baseID,
@@ -584,16 +596,16 @@
 			// cut the end off current path
 			baseID = baseID.slice(0, baseID.length - 1);
 			// is this id path a package module
-			if (this.context.modules[baseID.join("/")] instanceof Package) {
-				return this.context.modules[baseID.join("/")];
+			if (modules[baseID.join("/")] instanceof Package) {
+				return modules[baseID.join("/")];
 			}
 		}
-		// if no package found, return context root package 
-		return this.context.mpackage;
+		// if no package found, return root package 
+		return root;
 	}
 		
 	/**
-	 * Resolve a context rooted id (/x/y/z) to an full URI by also taking packages into account
+	 * Resolve a global rooted id (/x/y/z) to an full URI by also taking packages into account
 	 */	
 	Module.prototype.resolveURI = function(id, parentPackage) {
 		// if base package is undefined then use current package uri
@@ -609,7 +621,7 @@
 		var file = doc.createElement("script");
 		file._moduleId = id;
 		file._package = parentPackage;
-		file._timer = setTimeout(this.scriptTimer(file, cb, scope), this.context.timeout);
+		file._timer = setTimeout(this.scriptTimer(file, cb, scope), timeout);
 		file.type = "text/javascript";
 		file.onload = file.onreadystatechange = this.scriptLoad(file, cb, scope);
 		file.src = uri;
@@ -650,6 +662,7 @@
 	Module.prototype.scriptTimer = function(script, cb, scope) {
 		return function(){
 			script._timer = 0;					// timer is already used else I wouldn't be here... ;-)
+			console.log('Timer went off !!!! script moduleId: ', script._moduleId);
 			cb.call(scope, script, false);		// call the callback function with the correct scope and error indication
 		};
 	}
@@ -660,20 +673,20 @@
 
 	/**
 	 * Package class definition
-	 * @param {object} context The loaders context this Package is working in
 	 * @param {Package object} package The parent Package this Package is working for
-	 * @param {string} id The context global id of this Package
+	 * @param {string} id The global id of this Package
 	 * @param {string} uri The URI of the file in which this Package is declared
 	 */
-	function Package(context, parentPackage, id, uri, mapcfg) {
+	function Package(parentPackage, id, uri, mapcfg) {
 		this.cfg = mapcfg;												// the config is this config until a package definition is loaded
 		this.path = {};													// empty path config
+		this.mainId = '';													// empty main module for this package
 		
 		// if no parent package then parent package is self (for initialization of root module/package)
 		parentPackage = (parentPackage === null) ? this : parentPackage;
 		
-		// first cal the parent class (Module) with context, parent package and id path in parent package..
-		Module.call(this, context, parentPackage, id, uri);
+		// first cal the parent class (Module) with parent package and id path in parent package..
+		Module.call(this, parentPackage, id, uri);
 	};
 	Package.prototype = new Module();
 
@@ -681,11 +694,19 @@
 	 * Start loading a package definition in this package
 	 */
 	Package.prototype.loadPackageDef = function(file){
+		var id;
+		
 		// check if other then standard definition path/filename is given
-		file = (file) ? file + '.js' : this.resolveURI('package.js', this);
+		if (file) {
+			id = resolveUri(this.id, getLast(file));
+			file = this.resolveURI(file+'.js', this);
+		} else {
+			id = resolveUri(this.id, 'package');
+			file = this.resolveURI('package.js', this);
+		}
 		
 		// insert the scripttag with the correct variables (id, uri, parentPackage, cb, scope)
-		this.insertScriptTag(this.id, file, this, this.procesQueues, this);
+		this.insertScriptTag(id, file, this, this.procesQueues, this);
 	}
 	
 	/**
@@ -707,6 +728,10 @@
 		
 		// process the module defQueue
 		this.procesModQueue(script, state);
+		
+		// see if main module is already defined else load it, can't do this check in procesPackageCfg
+		// because waiting module defs loaded inline with the package def are not processed at that moment.
+		if ((this.mainId !== '') && !modules[this.mainId]) this.loadModules([[this.mainId, this]]);
 	}
 	
 	/**
@@ -720,35 +745,48 @@
 			if (testInteractive) script = def[1];
 			
 			// proces config and save also for later use
-			this.procesPackageCfg(script._package, def[0]);
+			script._package.procesPackageCfg(def[0]);
 		}
 	}
 	
-	Package.prototype.procesPackageCfg = function(_package, cfg) {
-		var map,
-			modules = this.context.modules;
+	Package.prototype.procesPackageCfg = function(cfg) {
+		var map;
 
-		_package.cfg = cfg,																	// get config and save also for later use
+		// copy cfg to this package
+		this.cfg = cfg;																		// get config and save also for later use
 		
-		// add lib dir to module uri location if available in cfg
-		this.uri = (cfg.directories && cfg.directories.lib) ? this.resolveURI(cfg.directories.lib, this) : this.uri;
+		// see if main module is defined, if not set it up.
+		this.mainId = (cfg.main) ? resolveUri(this.id, cfg.main) : this.mainId;
+		
+		// add lib dir to module uri location if available in cfg else use standard 'lib'
+		this.uri = (cfg.directories && cfg.directories.lib) ? this.resolveURI(cfg.directories.lib, this) : this.resolveURI('lib', this);
 		
 		// iterate through all the paths to create new path references for this package
 		map = (cfg.paths) ? cfg.paths : {};													// if paths config then take that else empty object
 		iterate(map, function(newId, pathcfg) {
-			_package.path[newId] = resolveUri(_package.uri, pathcfg);						// resolve the newId against the current package
+			this.path[newId] = resolveUri(this.uri, pathcfg);								// resolve the new path against the current lib package path
 		}, this);
 		
 		// iterate through all the mappings to create and load new packages
 		map = (cfg.mappings) ? cfg.mappings : {};											// if mappings config then take that else empty object
 		iterate(map, function(newId, mapcfg) {
 			var uri = mapcfg.location;														// get the location of the package
-			newId = this.resolveId(newId, _package);										// resolve the newId against the current package
-			modules[newId] = new Package(this.context, _package, newId, uri, mapcfg);		// create new package
+			newId = this.resolveId(newId, this);											// resolve the newId against the current package
+			modules[newId] = new Package(this, newId, uri, mapcfg);							// create new package
 			modules[newId].loadPackageDef();												// and start loading its definition
 		}, this);
 	}
 
+	/**
+	 * Set reference to main module for this package
+	 */		
+	Package.prototype.setMainModule = function(exports, creatorFn, deps) {
+		this.exports = exports;
+		this.creatorFn = creatorFn;
+		this.deps = deps;
+		this.returnModule().id = this.mainId;
+	}
+		
 	/********************************************************************************************
 	* General Functions																			*
 	********************************************************************************************/
@@ -827,20 +865,22 @@
 			i,
 			defaultcfg = {
 				main: '',
+				mainFunction: null,
+				deps: [],
 				location: '',
 				directories: {
 					lib: './lib'
 				},
-				waitSeconds: 10000,
+				waitSeconds: 6000,
 				baseUrlMatch: /apprequire\.js/i
 			},			
 			
 		// if no config then create clean objects and after that mixin the default items if not existing
-		cfg = (cfg) ? cfg : defaultcfg;
+		cfg = (typeof cfg == 'object') ? cfg : defaultcfg;
 		mixin(cfg, defaultcfg);
 		
 		// set waitseconds
-		context.timeout = cfg.waitSeconds;
+		timeout = cfg.waitSeconds;
 		
 		//Figure out if there is a 'data-main' attribute value. Get it from the script tag with cfg.baseUrlMatch as regexp.
 		for (i = scriptList.length - 1; i > -1 && (script = scriptList[i]); i--) {
@@ -855,24 +895,34 @@
 			}
 		}
 		
-		// dataMain config has preference over cfg location tag
-		src = (dataMain) ?  resolveUri(cutLast(global.location.href), dataMain) : resolveUri(cutLast(global.location.href), cfg.location);
-		var mainId = (dataMain) ? getLast(dataMain): getLast(cfg.main); 
-		
-		// create root/main package/module. Also set (context, package, id, uri, mapcfg)
-		context.modules[''] = context.mpackage = new Package(context, null, '', src, cfg);
-		
+		// dataMain config has preference over cfg location tag (add dummy to circumvent premature / removal in resolveUri)
+		src = (dataMain) ?  resolveUri(cutLast(global.location.href), dataMain) : resolveUri(global.location.href + 'dummy', cfg.location);
+		// create root/main package/module, set (package, id, uri, mapcfg)
+		root = modules[''] = new Package(null, '', src, cfg);
 		// initialize global hooks
 		initGlobals();
 		
 		// load Main script (if requested) in main package
 		if (dataMain) {
 			// load root package config from dataMain location
-			context.mpackage.loadPackageDef(dataMain);
+			root.loadPackageDef(dataMain);
 		} else {
 			// initialize root package with config
-			context.mpackage.procesPackageCfg(context.mpackage, cfg);
-			if (mainId !== '') global.require(mainId);
+			root.procesPackageCfg(cfg);
+			
+			// see if main module/function is requested in cfg
+			if ((cfg.main !== '') && (cfg.mainFunction !== null)) {
+				// define main module
+				declare(cfg.main, cfg.deps, cfg.mainFunction);
+				root.procesModQueue({
+					_package: root,
+					_moduleId: cfg.main,
+					src: global.location.href
+				}, true);
+			} else if (cfg.main !== '') {
+				// want main module but no define function then try to load main module
+				root.loadModules([[cfg.main, root]]);
+			}
 		}; 			
     }
 	
@@ -881,14 +931,14 @@
 	 */
 	function initGlobals(){
 		// define global require namespace with ensure function
-		var require = global.require = context.mpackage.returnRequire();
+		var require = global.require = root.returnRequire();
 		require.ensure = global.require;
 		require['package'] = definePackage; // array defenition because of minifier not accepting package propertie on objects... :-(
 		
 		// define global module namespace with the declare functions
-		require.main = global.module = context.mpackage.returnModule();
+		require.main = global.module = root.returnModule();
 		global.module.declare = declare;
-		global.module.context = context; // added for firebug testing to check modules etc, ***** Delete for production !!!!!! *****
+		global.module.modules = modules; // added for firebug testing to check modules etc, ***** Delete for production !!!!!! *****
 		
 		// implemented for module compatibility with requireJS
 		global.define = declare;
