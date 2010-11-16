@@ -202,7 +202,14 @@
 			} else if (part === "..") {
 				baseId.splice(i - 1, 2);
 				i -= 2;
-				if (i < 0) return createUri(pe, '');
+				// if smaller then base then see if terms left
+				if ((i < 0) && (baseId.length == 0)) {
+					// no terms left so return empty string
+					return createUri(pe, '');
+				} else {
+					// terms left so again at beginning of termlist
+					i=0;
+				}
 			} 
 		}
 		// return created globally unique id
@@ -297,6 +304,12 @@
 		this.module = null;
 		this.deps = [];
 		this.defined = false;
+		
+		// see if this module is also the main of the parent package. If so, set this module as parent package main module.
+		// needs to be done before real creation call to solve dependency problems using require.main !!
+		if ((this instanceof Package === false) && this.parentPackage && (this.id === this.parentPackage.mainId)) {
+			this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps);
+		}
 	};
 	
 	/**
@@ -314,7 +327,7 @@
 		if (isArray(id)) {
 			delayFn = deps;
 			deps = id;
-			id = '';
+			id = null;
 		}
 		
 		if (typeof deps === 'function') {
@@ -327,8 +340,8 @@
 		// normalize id if not empty
 		id = (id === '') ? id : ((id.charAt(0) === '.') ? resolveUri(cutLast(this.id), id) : resolveUri(this.parentPackage.id, id));
 		
-		if (id === '') {
-			// id = '' so it is an ensure call
+		if (id === null) {
+			// id = null so it is an ensure call
 			var result = [], i, dep;
 			
 			for (i=0; dep=deps[i]; i++) {
@@ -342,7 +355,7 @@
 		} else if (!modules[id]) {
 			// module doesn't exist so throw error
 			throw "Module: " + id + " doesn't exist!!";
-		} else if (!modules[id].creatorFn) {
+		} else if ((!modules[id].creatorFn) && (!modules[id].defined)) {
 			// module exists but is not loaded (when error loading file)
 			throw "Module: " + id + " is not loaded or created!!";
 		}		
@@ -385,8 +398,9 @@
 		// handle erors in loading
 		if (!state) {
 			// set corresponding module to empty
-			modules[script._moduleId].define([], null);		// no deps, no creatorfn
-			modules[script._moduleId].defined = true;		// but defined
+			delete modules[script._moduleId];
+//			modules[script._moduleId].define([], null);		// no deps, no creatorfn
+//			modules[script._moduleId].defined = true;		// but defined
 		}
 		
 		for (i=0; def = defQueue[i]; i++){
@@ -451,11 +465,6 @@
 	/**
 	 * Initialize Module.exports by calling creatorFn if all dependencies are ready..
 	 */
-	 
-	 //***********************************************************************************************************************
-	 // circular dependency (a needs b and b needs a) needs to be solved in following code !!!)
-	 //***********************************************************************************************************************
-	 
 	Module.prototype.create = function(recursion) {
 		var dep,
 			i;
@@ -489,23 +498,20 @@
 		// need reference to exports
 		// need reference to module object with id and uri of this module
 		// do mixin of result and this.exports
+		this.defined = true;		// set to true before initialization call because module can request itself.. (circular dep problems) 
 		mixin(this.exports, this.creatorFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
-		this.defined = true;
-		
-		// see if this module is also the main of the parent package. If so, set this module as main package module.
-		if (this.id === this.parentPackage.mainId) {
-			this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps);
-		}
 		
 		// this module is defined so return true
 		return true;
 	}
 	
 	Module.prototype.returnRequire = function (){
-		var that = this;
-		return function(){
-			return that.require.apply(that, arguments);
-		}
+		var that = this,
+			reqFunction =  function(){
+				return that.require.apply(that, arguments);
+			}
+		reqFunction.main = root.returnModule();
+		return reqFunction;
 	}
 
 	Module.prototype.returnModule = function (){
@@ -784,7 +790,7 @@
 		this.exports = exports;
 		this.creatorFn = creatorFn;
 		this.deps = deps;
-		this.returnModule().id = this.mainId;
+		this.defined = true;							// module is defined so main too... ;-)
 	}
 		
 	/********************************************************************************************
