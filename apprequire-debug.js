@@ -47,7 +47,15 @@
 		tString = Object.prototype.toString,					// short version of toString for isxxxx functions
 		doc = global.document,									// DOM document reference
 		horb = doc.getElementsByTagName("head")[0] || doc.getElementsByTagName("body")[0], // get location of scripts in DOM
-		testInteractive = !!global.ActiveXObject,				// test if IE for onload workaround... (
+		testInteractive = !!global.ActiveXObject,				// test if IE for onload workaround... 
+		
+		//The following are module state constants
+		LOADING = 'LOADING',
+		WAITING = 'WAITING',
+		LOADED = 'LOADED',
+		DEPENDENCY = 'DEPENDENCY',
+		DEFINED = 'DEFINED',
+		LOADERROR = 'LOADERROR',
 		
 		// end of shortcuts, define real vars... ;-)
 		modules = {},											// All defined packages/modules
@@ -298,17 +306,17 @@
 		this.parentPackage = parentPackage;
 		this.id = id;
 		this.uri = uri;
+		this.state = LOADING;
 		
 		this.exports = {};
 		this.creatorFn = null;
 		this.module = null;
 		this.deps = [];
-		this.defined = false;
 		
 		// see if this module is also the main of the parent package. If so, set this module as parent package main module.
 		// needs to be done before real creation call to solve dependency problems using require.main !!
 		if ((this instanceof Package === false) && this.parentPackage && (this.id === this.parentPackage.mainId)) {
-			this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps);
+			this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps, WAITING);
 		}
 	};
 	
@@ -355,9 +363,9 @@
 		} else if (!modules[id]) {
 			// module doesn't exist so throw error
 			throw "Module: " + id + " doesn't exist!!";
-		} else if ((!modules[id].creatorFn) && (!modules[id].defined)) {
+		} else if ((modules[id].state === LOADING) || (modules[id].state === LOADERROR)) {
 			// module exists but is not loaded (when error loading file)
-			throw "Module: " + id + " is not loaded or created!!";
+			throw "Module: " + id + " is not loaded or in error state!!";
 		}		
 		
 		// just a normal require call and return exports if requested module 
@@ -397,10 +405,12 @@
 			
 		// handle erors in loading
 		if (!state) {
-			// set corresponding module to empty
-			delete modules[script._moduleId];
-//			modules[script._moduleId].define([], null);		// no deps, no creatorfn
-//			modules[script._moduleId].defined = true;		// but defined
+			// Set the state for this module to LOADERROR
+			modules[script._moduleId].setState(LOADERROR);
+			// see if this module is also the main of the parent package. If so, set that state to LOADERROR too...
+			if ((this instanceof Package === false) && this.parentPackage && (this.id === this.parentPackage.mainId)) {
+				this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps, LOADERROR);
+			}
 		}
 		
 		for (i=0; def = defQueue[i]; i++){
@@ -422,8 +432,8 @@
 				modules[id] = new Module(rootPackage, id, script.src);
 			}
 			
-			// check first if the module's creatorFn already is defined, that means double define, and thats not allowed !!
-			if (modules[id].creatorFn === null) { 
+			// check first if the module state is loading, that means double define, and thats not allowed !!
+			if (modules[id].state === LOADING) { 
 				modules[id].define(def[1], def[2]);
 			}
 		};
@@ -434,8 +444,8 @@
 		if (scripts.length == 0) {
 			var deps = [];
 			iterate(modules, function(key, mod) {
-				// if exports is defined then module is ready so skip
-				if (!mod.defined) {
+				// if module is loaded then look for dependencies to load
+				if (mod.state === LOADED) {
 					// dependencies defined ??
 					if (mod.deps.length > 0) {
 						var dep;
@@ -445,6 +455,8 @@
 							if (!modules[dep]) deps.push([dep, mod]);
 						};
 					}
+					// dependencies are being loaded for this module
+					mod.setState(DEPENDENCY);
 				}
 			});
 			if (deps.length > 0) {
@@ -454,8 +466,8 @@
 		
 		// while loading dependency scripts or all scripts loaded try to evaluate all elegible modules by calling createFn
 		iterate(modules, function(key, mod) {
-			// if exports is not defined and there is a creatorFn then look if you can create the module
-			if (!mod.defined && (mod.creatorFn !== null)) {
+			// if in dependency state then look if you can create the module
+			if (mod.state === DEPENDENCY) {
 				// recursive 
 				mod.create();
 			}
@@ -472,11 +484,11 @@
 		// start recursionlist
 		recursion = (recursion) ? recursion : {};
 		
-		// if already created then don't need to do anything so return true, if recursion give true back too;
-		if (this.defined || recursion[this.id]) return true;
+		// if already created then don't need to do anything so return true, if recursion or loaderror give true back too to get all the processing done;
+		if ((this.state === DEFINED) || (this.state === LOADERROR) || recursion[this.id]) return true;
 		
-		// not created but also not defined so return false
-		if (this.creatorFn === null) return false;
+		// stil loading or not yet in dependency state so return false
+		if ((this.state === LOADING) || (this.state === LOADED) || (this.state === WAITING)) return false;
 		
 		// add this module to already in recursion (to solve cyclic dependency)
 		recursion[this.id] = true;
@@ -486,19 +498,24 @@
 			if (depMod === UNDEF) {
 				// dependency module does not exist so return with false
 				return false;
-			} else if (!depMod.defined) {
+			} else if (depMod.state !== DEFINED) {
 				// dependency module is not created and it returns that it can't be created then return with false too 
 				if (!depMod.create(recursion)) return false;
 			};
 		};
 		delete recursion[this.id];
 		
+		// see if this module is also the main of the parent package. If so, update the parentPackage too...
+		if ((this instanceof Package === false) && this.parentPackage && (this.id === this.parentPackage.mainId)) {
+			this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps, DEFINED);
+		}
+		
 		// ah, all dependency modules are ready, create mine!!
 		// need reference to require function
 		// need reference to exports
 		// need reference to module object with id and uri of this module
 		// do mixin of result and this.exports
-		this.defined = true;		// set to true before initialization call because module can request itself.. (circular dep problems) 
+		this.setState(DEFINED);		// set to true before initialization call because module can request itself.. (circular dep problems) 
 		mixin(this.exports, this.creatorFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
 		
 		// this module is defined so return true
@@ -528,6 +545,11 @@
 	
 	Module.prototype.define = function(deps, creatorFn) {
 		var i, dep;
+		
+		//Set state of this module to LOADED
+		this.setState(LOADED);
+		
+		// normalize dependencies and set creatorFn
 		for (i=0; dep=deps[i]; i++) {
 			// normalize dependancy id relative to the module requiring it
 			dep = (dep.charAt(0) === '.') ? resolveUri(cutLast(this.id), dep) : resolveUri(this.parentPackage.id, dep);
@@ -549,7 +571,6 @@
 			uri;
 		
 		for (; mod = ids.pop();){
-//			pPackage = mod[1].parentPackage;
 			id = mod[0];
 			
 			// if module doesn't exist already 
@@ -562,7 +583,7 @@
 				
 				// create module and load corresponding script
 				modules[id] = new Module(pPackage, id, cutLast(uri));
-				this.insertScriptTag(id, uri + ".js", pPackage, this.procesQueues, this);
+				modules[id].insertScriptTag(id, uri + ".js", pPackage, modules[id].procesQueues, modules[id]); // set the module to load!!
 			}
 		}
 	}
@@ -656,8 +677,9 @@
 	 */
 	Module.prototype.scriptLoad = function(script, cb, scope) {
 		return function(){
-			if (script._done || (typeof script.readyState != "undefined" && script.readyState != "loaded"))
+			if (script._done || (typeof script.readyState != "undefined" && !((script.readyState == "loaded") || (script.readyState == "complete")))) {
 				return;							// not yet ready loading
+			}
 			cb.call(scope, script, true);		// call the callback function with the correct scope and error indication
 		};
 	}
@@ -671,6 +693,10 @@
 			console.log('Timer went off !!!! script moduleId: ', script._moduleId);
 			cb.call(scope, script, false);		// call the callback function with the correct scope and error indication
 		};
+	}
+	
+	Module.prototype.setState = function(state){
+		this.state = state;
 	}
 	
 	/********************************************************************************************
@@ -726,6 +752,15 @@
 		// do nothing because already parsed this scriptload
 		if (script._done) return;
 		
+		// handle erors in loading
+		if (!state) {
+			// see if this module is also the main of the parent package. If so, set that state to LOADERROR too...
+			if (script._package.id === this.id) {
+				// Set the state for this package to LOADERROR
+				this.setState(LOADERROR);
+			}
+		}
+		
 		// clean script var of callback functions etc.
 		this.cleanScriptTag(script);
 
@@ -733,7 +768,7 @@
 		this.procesPackageDefs(script);
 		
 		// process the module defQueue
-		this.procesModQueue(script, state);
+		this.procesModQueue(script, true);
 		
 		// see if main module is already defined else load it, can't do this check in procesPackageCfg
 		// because waiting module defs loaded inline with the package def are not processed at that moment.
@@ -781,16 +816,21 @@
 			modules[newId] = new Package(this, newId, uri, mapcfg);							// create new package
 			modules[newId].loadPackageDef();												// and start loading its definition
 		}, this);
+		
+		// set state to WAITING
+		this.setState(WAITING);
 	}
 
 	/**
 	 * Set reference to main module for this package
 	 */		
-	Package.prototype.setMainModule = function(exports, creatorFn, deps) {
+	Package.prototype.setMainModule = function(exports, creatorFn, deps, state) {
 		this.exports = exports;
 		this.creatorFn = creatorFn;
 		this.deps = deps;
-		this.defined = true;							// module is defined so main too... ;-)
+		
+		// set state to given state (WAITING or DEFINED)
+		this.setState(state);
 	}
 		
 	/********************************************************************************************
