@@ -401,18 +401,10 @@
 		var def,
 			id,
 			rootPackage,
-			i;
+			i,
+			scriptModuleId = script._moduleId;
 			
-		// handle erors in loading
-		if (!state) {
-			// Set the state for this module to LOADERROR
-			modules[script._moduleId].setState(LOADERROR);
-			// see if this module is also the main of the parent package. If so, set that state to LOADERROR too...
-			if ((this instanceof Package === false) && this.parentPackage && (this.id === this.parentPackage.mainId)) {
-				this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps, LOADERROR);
-			}
-		}
-		
+		// first handle all waiting modules to be defined	
 		for (i=0; def = defQueue[i]; i++){
 			// if interactive then get module def specific script var
 			if (testInteractive && (def[3] !== null)) script = def[3];
@@ -439,6 +431,16 @@
 		};
 		// clear for following load
 		defQueue = [];
+		
+		// handle erors in loading by checking if timeout occured (all browsers) or if script is given loaded but in reality isn't (IE)
+		if (!state || (modules[scriptModuleId].state === LOADING)) {
+			// Set the state for this module to LOADERROR
+			if (modules[script._moduleId]) modules[script._moduleId].setState(LOADERROR);
+			// see if this module is also the main of the parent package. If so, set that state to LOADERROR too...
+			if ((this instanceof Package === false) && this.parentPackage && (this.id === this.parentPackage.mainId)) {
+				this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps, LOADERROR);
+			}
+		}
 		
 		// resolve new dependencies if all scripts are loaded
 		if (scripts.length == 0) {
@@ -690,7 +692,6 @@
 	Module.prototype.scriptTimer = function(script, cb, scope) {
 		return function(){
 			script._timer = 0;					// timer is already used else I wouldn't be here... ;-)
-			console.log('Timer went off !!!! script moduleId: ', script._moduleId);
 			cb.call(scope, script, false);		// call the callback function with the correct scope and error indication
 		};
 	}

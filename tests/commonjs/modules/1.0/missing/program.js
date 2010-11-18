@@ -2,9 +2,10 @@ define(["test","bogus"], function(require, exports, module) {
 	var test = require('test');
 	try {
 		require('bogus');
-		test.print('FAIL require throws error when module missing', 'fail');
+		test.assert(false, 'require throws error when module missing');
 	} catch (exception) {
-		test.print('PASS require throws error when module missing', 'pass');
+		test.assert(true, 'require throws error when module missing');
 	}
 	test.print('DONE', 'info');
 });
+ 
