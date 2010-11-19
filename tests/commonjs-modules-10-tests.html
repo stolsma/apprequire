@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+	<head>
+		<title>AppRequire CommonJS/Modules/1.0 Unit Testing</title>
+		<style>
+			iframe {
+				top: 0px;
+				left: 0px;
+				position: absolute;
+				visibility: hidden;
+			}
+			
+			body {
+				font: 13px Arial;
+			}
+			
+			.pass {
+				color: green;
+			}
+			
+			.fail, .error {
+				color: red;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>AppRequire CommonJS/Modules/1.0 Unit Testing</h1>
+		<p><a href="http://localhost/webapps/examples/require/tests/">Back to other tests...</a></p>
+		<div></div>
+		<script>
+			// Based on code from Kevin H. Smith, https://github.com/khs4473)
+			var currentTest = 0,
+				runTimeOut = 0,
+				testTime = 3000,							// a test may take not more then xxx msecs else error...
+				testFolder = "./commonjs/modules/1.0/",
+				testFrame = null,
+				useWorkers = false,
+				hasWorkers = (typeof Worker !== "undefined")
+				testWorkers = false;
+			
+			var tests =	[
+				"absolute",
+				"cyclic",
+				"determinism",
+				"exactExports",
+				"hasOwnProperty",
+				"method",
+				"missing",
+				"monkeys",
+				"nested",
+				"relative",
+				"transitive",
+				"syntaxError",
+				"noDeclare",
+				"nonBlocking",
+				"transport",
+				"implicit"
+			];
+			
+			function onWorkerMessage(evt) {
+				var a = evt.data;
+				
+				setTimeout(function() {
+					if (window[a[0]])
+						window[a[0]](a[1], a[2]);
+				}, 50);
+			}
+			
+			function printResults(txt, style) {
+				var d = document.createElement("div");
+				setTextContent(d, txt);
+				d.className = style;
+				document.body.appendChild(d);
+				
+				// Test is ready so start next test
+				if (txt == 'DONE') {
+					// clear timeout
+					clearTimeout(runTimeOut);
+					// start next test
+					testComplete();
+				}
+			}
+			
+			function setTextContent(e, txt) {
+				if (typeof e.innerText === "string") e.innerText = txt;
+				else e.textContent = txt;
+			}
+			
+			function writeHeader(name) {
+				var h = document.createElement("h3");
+				setTextContent(h, name);
+				document.body.appendChild(h);
+			}
+			
+			function testTimeOut() {
+				runTimeOut = 0;
+				printResults('TIMEOUT Test takes to long !!!', 'error');
+				// do next test from list
+				testComplete();
+			}
+			
+			function testComplete() {
+				var test = tests[currentTest], worker;
+				
+				currentTest += 1;
+				
+				if (typeof test === "string") {
+					writeHeader(test);
+					test = encodeURIComponent(testFolder + test);
+					
+					if (useWorkers)	{
+						worker = new Worker("runner.js?" + test);
+						worker.onmessage = onWorkerMessage;
+					} else {
+						testFrame.src = "runner.html?" + test;
+					}
+					// Set test timeout
+					runTimeOut = setTimeout(testTimeOut, testTime);
+				} else if (!useWorkers && hasWorkers && testWorkers) {
+					writeHeader("WEB WORKERS");
+					
+					// Start over using workers
+					useWorkers = true;
+					currentTest = 0;
+					
+					testComplete();			
+				}
+			}
+			
+			window.onload = function() {
+				testFrame = document.createElement("iframe");
+				testFrame.id = "test-frame-" + (new Date()).getTime();
+				testFrame.src = "about:blank";
+				document.body.appendChild(testFrame);
+				
+				testComplete();
+			};
+			
+		</script>
+	</body>
+</html>

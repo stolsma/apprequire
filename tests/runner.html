@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Program Runner</title>
+    <script>
+		var test = decodeURIComponent((location.search || "?").substring(1));
+		
+		function printResults(txt, style) {
+			var d = document.createElement("div");
+			setTextContent(d, txt);
+			d.className = style;
+			document.body.appendChild(d);
+		}
+		
+		function setTextContent(e, txt) {
+			if (typeof e.innerText === "string") e.innerText = txt;
+			else e.textContent = txt;
+		}
+	
+        require = {
+			location: test,
+			directories: {
+				lib: '.'
+			},
+			main: 'program',
+            paths: {
+                system: '../../../../',
+                test: '../../../../'
+            },
+			waitSeconds: 2000					// changed from default to 2 sec to show timeout
+		};
+    </script>
+    <script src="../apprequire-debug.js"></script>
+</head>
+<body>
+    <h1>Program Runner</h1>
+</body>
+</html>
