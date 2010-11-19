@@ -33,8 +33,8 @@
 /**
  * Testing an implementation of CommonJS modules and Package loading
  * Based on CommonJS (http://www.commonjs.org), discussions on the Google Groups CommonJS lists 
- * (http://groups.google.com/group/commonjs), RequireJS 0.14.5 (James Burke), 
- * FlyWrap.js (copyright Jimmy Page) and utility code of Ext Core / ExtJS 3.2.1.
+ * (http://groups.google.com/group/commonjs), RequireJS 0.14.5 (James Burke, http://requirejs.org), 
+ * FlyScript.js (copyright Kevin H. Smith, https://github.com/khs4473) and utility code of Ext Core / ExtJS 3.2.1.
  * For documentation how to use this: http://code.tolsma.net
  */
  
@@ -222,6 +222,10 @@
 		}
 		// return created globally unique id
 		return createUri(pe, baseId.join("/"));
+	}
+	
+	function resolvePath(base, offset) {
+		return resolveUri(base, offset) + '/';
 	}
 
 	/**
@@ -433,7 +437,7 @@
 		defQueue = [];
 		
 		// handle erors in loading by checking if timeout occured (all browsers) or if script is given loaded but in reality isn't (IE)
-		if (!state || (modules[scriptModuleId].state === LOADING)) {
+		if (!state || ((modules[scriptModuleId]) && (modules[scriptModuleId].state === LOADING))) {
 			// Set the state for this module to LOADERROR
 			if (modules[script._moduleId]) modules[script._moduleId].setState(LOADERROR);
 			// see if this module is also the main of the parent package. If so, set that state to LOADERROR too...
@@ -653,6 +657,7 @@
 		file._timer = setTimeout(this.scriptTimer(file, cb, scope), timeout);
 		file.type = "text/javascript";
 		file.onload = file.onreadystatechange = this.scriptLoad(file, cb, scope);
+		file.onerror = this.scriptError(file, cb, scope);
 		file.src = uri;
 		
 		// closure save for later use
@@ -687,6 +692,16 @@
 	}
 	
 	/**
+	 * Returns a closure function that will be called when there is an loaderror for a script
+	 */
+	Module.prototype.scriptError = function(script, cb, scope) {
+		return function(){
+				var test = 'test';
+				return;							// not yet ready loading
+		};
+	}
+	
+	/**
 	 * Returns a closure function that will be called when a script insertion times out
 	 */
 	Module.prototype.scriptTimer = function(script, cb, scope) {
@@ -713,7 +728,8 @@
 	function Package(parentPackage, id, uri, mapcfg) {
 		this.cfg = mapcfg;												// the config is this config until a package definition is loaded
 		this.path = {};													// empty path config
-		this.mainId = '';													// empty main module for this package
+		this.mainId = '';												// empty main module for this package
+		this.packageUri = uri;											// the root of the package
 		
 		// if no parent package then parent package is self (for initialization of root module/package)
 		parentPackage = (parentPackage === null) ? this : parentPackage;
@@ -806,13 +822,13 @@
 		// iterate through all the paths to create new path references for this package
 		map = (cfg.paths) ? cfg.paths : {};													// if paths config then take that else empty object
 		iterate(map, function(newId, pathcfg) {
-			this.path[newId] = resolveUri(this.uri, pathcfg);								// resolve the new path against the current lib package path
+			this.path[newId] = resolvePath(this.uri, pathcfg);								// resolve the new path against the current lib package path
 		}, this);
 		
 		// iterate through all the mappings to create and load new packages
 		map = (cfg.mappings) ? cfg.mappings : {};											// if mappings config then take that else empty object
 		iterate(map, function(newId, mapcfg) {
-			var uri = mapcfg.location;														// get the location of the package
+			var uri = resolvePath(this.packageUri, mapcfg.location);						// get the location of the package
 			newId = this.resolveId(newId, this);											// resolve the newId against the current package
 			modules[newId] = new Package(this, newId, uri, mapcfg);							// create new package
 			modules[newId].loadPackageDef();												// and start loading its definition
@@ -943,7 +959,7 @@
 		}
 		
 		// dataMain config has preference over cfg location tag (add dummy to circumvent premature / removal in resolveUri)
-		src = (dataMain) ?  resolveUri(cutLast(global.location.href), dataMain) : resolveUri(global.location.href + 'dummy', cfg.location);
+		src = (dataMain) ?  resolveUri(cutLast(global.location.href), dataMain) : resolvePath(cutLast(global.location.href), cfg.location);
 		// create root/main package/module, set (package, id, uri, mapcfg)
 		root = modules[''] = new Package(null, '', src, cfg);
 		// initialize global hooks
