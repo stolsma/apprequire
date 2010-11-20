@@ -279,7 +279,7 @@
 	 * @param {string} uri The path string to cut the last term off.
 	 * @return {string} Path without last term
 	 */
-	function cutLast(uri){
+	function cutLast(uri) {
 		uri = uri.split('/');
 		uri = uri.slice(0, uri.length-1);
 		return uri.join("/"); 
@@ -290,10 +290,22 @@
 	 * @param {string} uri The path string to cut the last term off.
 	 * @return {string} Last term
 	 */
-	function getLast(uri){
+	function getLast(uri) {
 		uri = uri.split('/');
 		uri = uri.slice(uri.length-1);
 		return uri[0];
+	}
+	
+	function getModule(id) {
+		// prepend with constant to circumvent standard module properties
+		id = '_' + id;
+		return modules[id];
+	}
+	
+	function setModule(id, value) {
+		// prepend with constant to circumvent standard module properties
+		id = '_' + id;
+		return modules[id] = value;
 	}
 	
 	/********************************************************************************************
@@ -364,16 +376,16 @@
 			
 			this.loadModules(result, delayFn); // ensure callback is called when all modules are loaded
 			return UNDEF;
-		} else if (!modules[id]) {
+		} else if (!getModule(id)) {
 			// module doesn't exist so throw error
 			throw "Module: " + id + " doesn't exist!!";
-		} else if ((modules[id].state === LOADING) || (modules[id].state === LOADERROR)) {
+		} else if ((getModule(id).state === LOADING) || (getModule(id).state === LOADERROR)) {
 			// module exists but is not loaded (when error loading file)
 			throw "Module: " + id + " is not loaded or in error state!!";
 		}		
 		
 		// just a normal require call and return exports if requested module 
-		return modules[id].exports;
+		return getModule(id).exports;
 	}
 	
 	/**
@@ -424,22 +436,22 @@
 			}
 			
 			// if module doesn't exist then create one 
-			if (!modules[id]) {
-				modules[id] = new Module(rootPackage, id, script.src);
+			if (!getModule(id)) {
+				setModule(id, new Module(rootPackage, id, script.src));
 			}
 			
 			// check first if the module state is loading, that means double define, and thats not allowed !!
-			if (modules[id].state === LOADING) { 
-				modules[id].define(def[1], def[2]);
+			if (getModule(id).state === LOADING) { 
+				getModule(id).define(def[1], def[2]);
 			}
 		};
 		// clear for following load
 		defQueue = [];
 		
 		// handle erors in loading by checking if timeout occured (all browsers) or if script is given loaded but in reality isn't (IE)
-		if (!state || ((modules[scriptModuleId]) && (modules[scriptModuleId].state === LOADING))) {
+		if (!state || ((getModule(scriptModuleId)) && (getModule(scriptModuleId).state === LOADING))) {
 			// Set the state for this module to LOADERROR
-			if (modules[script._moduleId]) modules[script._moduleId].setState(LOADERROR);
+			if (getModule(script._moduleId)) getModule(script._moduleId).setState(LOADERROR);
 			// see if this module is also the main of the parent package. If so, set that state to LOADERROR too...
 			if ((this instanceof Package === false) && this.parentPackage && (this.id === this.parentPackage.mainId)) {
 				this.parentPackage.setMainModule(this.exports, this.creatorFn, this.deps, LOADERROR);
@@ -458,7 +470,7 @@
 						// walk through the dependencies to check if the module dependencies already exist and if not load them
 						for (i=0; dep=mod.deps[i]; i++) {
 							// if the dependent id doesnt exists push for loading
-							if (!modules[dep]) deps.push([dep, mod]);
+							if (!getModule(dep)) deps.push([dep, mod]);
 						};
 					}
 					// dependencies are being loaded for this module
@@ -492,16 +504,16 @@
 		recursion = (recursion) ? recursion : {};
 		
 		// if already created then don't need to do anything so return true, if recursion or loaderror give true back too to get all the processing done;
-		if ((this.state === DEFINED) || (this.state === LOADERROR) || recursion[this.id]) return true;
+		if ((this.state === DEFINED) || (this.state === LOADERROR) || recursion['_' + this.id]) return true;  // remember module property buster for recursion !!
 		
 		// stil loading or not yet in dependency state so return false
 		if ((this.state === LOADING) || (this.state === LOADED) || (this.state === WAITING)) return false;
 		
-		// add this module to already in recursion (to solve cyclic dependency)
-		recursion[this.id] = true;
+		// add this module to already in recursion (to solve cyclic dependency). Add module property buster !!!
+		recursion['_' + this.id] = true;
 		// walk through the dependencies to check if the module dependencies already exist and if not load them
 		for (i=0; dep=this.deps[i]; i++) {
-			var depMod = modules[dep];
+			var depMod = getModule(dep);
 			if (depMod === UNDEF) {
 				// dependency module does not exist so return with false
 				return false;
@@ -510,7 +522,7 @@
 				if (!depMod.create(recursion)) return false;
 			};
 		};
-		delete recursion[this.id];
+		delete recursion['_' + this.id];			// remember module property buster !!!
 		
 		// see if this module is also the main of the parent package. If so, update the parentPackage too...
 		if ((this instanceof Package === false) && this.parentPackage && (this.id === this.parentPackage.mainId)) {
@@ -581,7 +593,7 @@
 			id = mod[0];
 			
 			// if module doesn't exist already 
-			if (!modules.hasOwnProperty(id)){
+			if (!getModule(id)) {
 				// get parent package of this id
 				pPackage = this.resolveRootPackage(id);
 				
@@ -589,8 +601,8 @@
 				uri = pPackage.searchPath(id);
 				
 				// create module and load corresponding script
-				modules[id] = new Module(pPackage, id, cutLast(uri));
-				modules[id].insertScriptTag(id, uri + ".js", pPackage, modules[id].procesQueues, modules[id]); // set the module to load!!
+				setModule(id, new Module(pPackage, id, cutLast(uri)));
+				getModule(id).insertScriptTag(id, uri + ".js", pPackage, getModule(id).procesQueues, getModule(id)); // set the module to load!!
 			}
 		}
 	}
@@ -603,9 +615,17 @@
 		}
 		
 		// only return path of requested path id else return uri of id relative to parent package   
-		return (this.path[id]) ? resolveUri(this.path[id], id.split("/").pop()) : resolveUri(this.uri, id);
+		return (this.getPath(id)) ? resolveUri(this.getPath(id), id.split("/").pop()) : resolveUri(this.uri, id);
+	}
+	
+	Module.prototype.getPath = function(id) {
+		return this.path['_' + id];
 	}
 
+	Module.prototype.setPath = function(id, value) {
+		return this.path['_' + id] = value;
+	}
+	
 	/**
 	 * Resolve package rooted (x/y/z) and module relative ./y/z or ../y/z) id to a global rooted id (x/y/z)
 	 */	
@@ -630,8 +650,8 @@
 			// cut the end off current path
 			baseID = baseID.slice(0, baseID.length - 1);
 			// is this id path a package module
-			if (modules[baseID.join("/")] instanceof Package) {
-				return modules[baseID.join("/")];
+			if (getModule(baseID.join("/")) instanceof Package) {
+				return getModule(baseID.join("/"));
 			}
 		}
 		// if no package found, return root package 
@@ -674,6 +694,7 @@
 	Module.prototype.cleanScriptTag = function(script) {
 		script._done = true;
 		script.onload = script.onreadystatechange = new Function("");
+		script.onerror = new Function("");
 		if (script._timer) clearTimeout(script._timer);
 		each(scripts, function(s, index){
 			if (script === s) scripts.splice(index, 1);
@@ -697,8 +718,6 @@
 	 */
 	Module.prototype.scriptError = function(script, cb, scope) {
 		return function(){
-				console.log('OnError Called for: ', script._moduleId);
-				console.log('Arguments: ', arguments);
 				cb.call(scope, script, false);		// call the callback function with the correct scope and error indication
 		};
 	}
@@ -791,7 +810,7 @@
 		
 		// see if main module is already defined else load it, can't do this check in procesPackageCfg
 		// because waiting module defs loaded inline with the package def are not processed at that moment.
-		if ((this.mainId !== '') && !modules[this.mainId]) this.loadModules([[this.mainId, this]]);
+		if ((this.mainId !== '') && !getModule(this.mainId)) this.loadModules([[this.mainId, this]]);
 	}
 	
 	/**
@@ -824,7 +843,7 @@
 		// iterate through all the paths to create new path references for this package
 		map = (cfg.paths) ? cfg.paths : {};													// if paths config then take that else empty object
 		iterate(map, function(newId, pathcfg) {
-			this.path[newId] = resolvePath(this.uri, pathcfg);								// resolve the new path against the current lib package path
+			this.setPath(newId, resolvePath(this.uri, pathcfg));							// resolve the new path against the current lib package path
 		}, this);
 		
 		// iterate through all the mappings to create and load new packages
@@ -832,8 +851,8 @@
 		iterate(map, function(newId, mapcfg) {
 			var uri = resolvePath(this.packageUri, mapcfg.location);						// get the location of the package
 			newId = this.resolveId(newId, this);											// resolve the newId against the current package
-			modules[newId] = new Package(this, newId, uri, mapcfg);							// create new package
-			modules[newId].loadPackageDef();												// and start loading its definition
+			setModule(newId, new Package(this, newId, uri, mapcfg));						// create new package
+			getModule(newId).loadPackageDef();												// and start loading its definition
 		}, this);
 		
 		// set state to WAITING
@@ -963,7 +982,7 @@
 		// dataMain config has preference over cfg location tag (add dummy to circumvent premature / removal in resolveUri)
 		src = (dataMain) ?  resolveUri(cutLast(global.location.href), dataMain) : resolvePath(cutLast(global.location.href), cfg.location);
 		// create root/main package/module, set (package, id, uri, mapcfg)
-		root = modules[''] = new Package(null, '', src, cfg);
+		root = setModule('', new Package(null, '', src, cfg));
 		// initialize global hooks
 		initGlobals();
 		
