@@ -307,15 +307,15 @@
 	 * @param {string} uri The URI of the file in which this module is declared
 	 */
 	function Module(parentPackage, id, uri) {
-		this.parentPackage = parentPackage;
-		this.id = id;
-		this.uri = uri;
-		this.state = LOADING;
+		this.parentPackage = parentPackage;											// The parent package of this module
+		this.id = id;																// The full id of this module in this package
+		this.uri = uri;																// The uri location of this module
+		this.state = LOADING;														// The state of this module (LOADING, LOADED, DEPENDING, DEFINED, ERROR)
 		
-		this.exports = {};
-		this.creatorFn = null;
-		this.module = null;
-		this.deps = [];
+		this.exports = {};															// The exports object for this module
+		this.creatorFn = null;														// Factory Function
+		this.module = null;															// The module variable for the factory function
+		this.deps = [];																// The module dependencies (full id's)
 		
 		// see if this module is also the main of the parent package. If so, set this module as parent package main module.
 		// needs to be done before real creation call to solve dependency problems using require.main !!
@@ -482,6 +482,7 @@
 	
 	/**
 	 * Initialize Module.exports by calling creatorFn if all dependencies are ready..
+	 * @param {object} recursion The modules that are already checked in this create (property list of module id's) 
 	 */
 	Module.prototype.create = function(recursion) {
 		var dep,
@@ -696,8 +697,9 @@
 	 */
 	Module.prototype.scriptError = function(script, cb, scope) {
 		return function(){
-				var test = 'test';
-				return;							// not yet ready loading
+				console.log('OnError Called for: ', script._moduleId);
+				console.log('Arguments: ', arguments);
+				cb.call(scope, script, false);		// call the callback function with the correct scope and error indication
 		};
 	}
 	
