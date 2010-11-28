@@ -52,8 +52,11 @@ require.package({
 		web: 'http://code.tolsma.net'
 	}],
 
-	// mapping from id to other packages. In this case empty
+	// mapping from id to other packages. In this case only root package
 	mappings: {
+		root: {
+			uid: 'commonjs.org'
+		}
 	}
 });
 
