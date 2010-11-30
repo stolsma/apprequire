@@ -155,6 +155,19 @@ Project = Ext.extend(Object, {
             target.get('targetPath').replace(this.builder.get('debugSuffix'), '') + ' ' + 
             target.get('targetPath')
         );
+		
+		// added by SSMT for copyright inclusion
+		if (this.get('licenseText')) {
+			// open file stream to read from
+			var file = target.get('targetPath').replace(this.builder.get('debugSuffix'), '');
+			Logger.log('  * Add licence text to: ' + file);
+			var include = new Stream(file, 'rw');
+			var content = include.readFile();
+			include.rewind();
+			include.writeln(this.get('licenseText'));
+			include.writeln(content);
+			include.close();
+		}
     },
     
     getCompressor : function() {
