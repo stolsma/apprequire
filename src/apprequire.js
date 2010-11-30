@@ -55,6 +55,7 @@
 		LOADED = 'LOADED',
 		DEPENDENCY = 'DEPENDENCY',
 		DEFINED = 'DEFINED',
+		READY = 'READY',
 		LOADERROR = 'LOADERROR',
 		
 		WAITING = 'WAITING',
@@ -66,7 +67,8 @@
 		scripts = [],											// current loading scripts...
 		defQueue = [],											// modules waiting to be defined
 		defPackages = [],										// package configs waiting to be used
-		root = null;											// root package
+		root = null,											// root package
+		deferred = {};											// array of deferred function calls waiting for modules to be in defined or ready state
 
 	/**
 	 * Returns true if the passed value is a JavaScript array, otherwise false.
@@ -169,6 +171,9 @@
 	/**
 	 * Simple function to mix in properties from source into target,
 	 * but only if target does not already have a property of the same name.
+	 * @param {object} target
+	 * @param {object} source
+	 * @param {bool} force (optional) Force addition from source to target
 	 */
 	function mixin(target, source, force) {
 		for (var prop in source) {
@@ -179,30 +184,10 @@
 	};
 	
 	/**
-	 * Copies all the properties of config to obj.
-	 * @param {Object} obj The receiver of the properties
-	 * @param {Object} config The source of the properties
-	 * @param {Object} defaults A different object that will also be applied for default values
-	 * @return {Object} returns obj
-	 * @member Ext apply
-	 */
-	function apply(o, c, defaults){
-		// no "this" reference for friendly out of scope calls
-		if (defaults) {
-			apply(o, defaults);
-		}
-		if (o && c && typeof c == 'object') {
-			for(var p in c) {
-				o[p] = c[p];
-			}
-		}
-		return o;
-	};
-	
-	/**
 	 * Apply the offset uri to the base uri (relative etc..)
 	 * @param {uri} base The basepath to resolve to
 	 * @param {uri} offset The offset to apply to the base path
+	 * @return {uri} Fully resolved uri. If offset goes out of base then error is throwed
 	 */
 	function resolveUri(base, offset) {
 		// normalize end character
@@ -250,6 +235,12 @@
 		return createUri(pe, baseId.join("/"));
 	}
 	
+	/**
+	 * Apply the offset uri to the base uri (relative etc..) but end with '/'
+	 * @param {uri} base The basepath to resolve to
+	 * @param {uri} offset The offset to apply to the base path
+	 * @return {uri} Fully resolved uri. If offset goes out of base then error is throwed
+	 */
 	function resolvePath(base, offset) {
 		return resolveUri(base, offset) + '/';
 	}
@@ -344,24 +335,65 @@
 		return uri[0];
 	}
 	
+	/**
+	 * Get the requested module
+	 * @param {string} id The fully resolved id of the module to return.
+	 * @return {Module} Requested module or undef if not there
+	 */
 	function getModule(id) {
 		// prepend with constant to circumvent standard Object properties
 		return modules[objEscStr + id];
 	}
 	
+	/**
+	 * Set the requested module in the modules list
+	 * @param {string} id The fully resolved id of the module to save.
+	 * @param {Module} value The module.
+	 * @return {Module} The set module
+	 */
 	function setModule(id, value) {
 		// prepend with constant to circumvent standard Object properties
 		return modules[objEscStr + id] = value;
 	}
 	
-	function getPackage(id) {
+	/**
+	 * Get the requested package
+	 * @param {string} uid The uid of the package to return.
+	 * @return {Package} Requested package or undef if not there
+	 */
+	function getPackage(uid) {
 		// prepend with constant to circumvent standard Object properties
-		return packages[objEscStr + id];
+		return packages[objEscStr + uid];
 	}
 	
-	function setPackage(id, value) {
+	/**
+	 * Set the requested package in the packages list
+	 * @param {string} id The uid of the package to save.
+	 * @param {Package} value The package.
+	 * @return {Package} The set package
+	 */
+	function setPackage(uid, value) {
 		// prepend with constant to circumvent standard Object properties
-		return packages[objEscStr + id] = value;
+		return packages[objEscStr + uid] = value;
+	}
+	
+	/**
+	 * Set defer function of loading of module
+	 * @param {string} id The uid of the module to wait for.
+	 * @param {function} fn The callback function.
+	 * @param {object} The scope of the callback function
+	 */
+	function addDefer(id, fn, scope) {
+		var module = getModule(id)
+		if (module && ((module.state === DEFINED) || (module.state === READY))) {
+			fn.call(scope);
+		} else {
+			// defer this call until module is loaded
+			deferred[id] = {
+				fn: fn,
+				scope: scope
+			};
+		}
 	}
 	
 	/********************************************************************************************
@@ -370,15 +402,16 @@
 
 	/**
 	 * Module class definition
-	 * @param {Package object} package The parent Package this module is working in
+	 * @param {Package} pPackage The parent Package this module is working in
 	 * @param {string} id The global id of this Module
 	 * @param {string} uri The URI of the file in which this module is declared
 	 */
-	function Module(parentPackage, id, uri) {
-		this.parentPackage = parentPackage;											// The parent package of this module
-		this.id = id;																// The id of this module in this package
+	function Module(pPackage, id, uri) {
+		this.parentPackage = pPackage;												// The parent package of this module
+		this.id = id;																// The fully resolved id of this module in this package
 		this.uri = uri;																// The uri location of this module
-		this.state = LOADING;														// The state of this module (LOADING, LOADED, DEPENDING, DEFINED, ERROR)
+		this.state = LOADING;														// The state of this module (LOADING, LOADED, DEPENDING,
+																					// DEFINED, READY, LOADERROR)
 		
 		this.exports = {};															// The exports object for this module
 		this.factoryFn = null;														// Factory Function
@@ -392,6 +425,9 @@
 		 * Two 'legal' possible uses:
 		 * 	- deps, delayFn (ensure)
 		 *	- id (require)
+		 * @param {string} id
+		 * @param {array] deps
+		 * @param {function} delayFn
 		 */
 		 //***********************************************************************************************************************
 		 // async require needs to be implemented (delayFn is defined but not used at this moment)
@@ -413,8 +449,8 @@
 			// normalize id if not empty
 			id = (id === '') ? id : this.resolveId(id);
 			
+			// if no id then ensure call
 			if (id === null) {
-				// id = null so it is an ensure call
 				var result = [], i, dep;
 				
 				for (i=0; dep=deps[i]; i++) {
@@ -425,22 +461,26 @@
 				
 				this.parentPackage.loadModules(result, delayFn); // ensure callback is called when all modules are loaded
 				return UNDEF;
-			} else if (!getModule(id)) {
+			} 
+			
+			// get requested module
+			var mod = getModule(id);
+			if (!mod) {
 				// module doesn't exist so throw error
 				throw "Module: " + id + " doesn't exist!!";
-			} else if ((getModule(id).state === LOADING) || (getModule(id).state === LOADERROR)) {
+			} else if (!mod.createModule() || (mod.state === LOADING) || (mod.state === LOADERROR)) {
 				// module exists but is not loaded (when error loading file)
 				throw "Module: " + id + " is not loaded or in error state!!";
 			}		
 			
-			// just a normal require call and return exports if requested module 
-			return getModule(id).exports;
+			// just a normal require call and return exports of requested module 
+			return mod.exports;
 		},
 		
 		/**
 		 * Resolve the given relative id to the current id or if not relative only sanatize it
 		 * @param {string} id The id to resolve
-		 * @return string resolved and sanatized id.
+		 * @return {string} resolved and sanatized id.
 		 */
 		resolveId: function(id) {
 			// if already with package uid then all ok so return id
@@ -457,11 +497,34 @@
 		},
 		
 		/**
-		 * Initialize Module.exports by calling creatorFn if all dependencies are ready..
-		 * @param {object} recursion The modules that are already checked in this create (property list of module id's)
-		 * @return bool True state if created, False state if not possibele yet
+		 * Parse dependencies and if not already loading them, then load them...
 		 */
-		create: function(recursion) {
+		resolveDependencies: function() {
+			var deps = this.deps,
+				i;
+			
+			// dependencies defined ??
+			if (deps.length > 0) {
+				var dep;
+				// walk through the dependencies to check if the module dependencies already exist and if not load them
+				for (i=0; dep=deps[i]; i++) {
+					// normalize dep id and save for later use
+					dep = this.resolveId(dep);
+					deps[i] = dep;
+					// if the dependent id doesnt exists load it
+					if (!getModule(dep)) this.parentPackage.loadModules(dep, null);
+				};
+			}
+			// dependencies are being loaded for this module
+			this.setState(DEPENDENCY);
+		},
+
+		/**
+		 * Set state to DEFINED if all dependencies are ready..
+		 * @param {object} recursion The modules that are already checked in this create (property list of module id's)
+		 * @return {bool} True state if created, False state if not possibele yet
+		 */
+		checkDependencyState: function(recursion) {
 			var dep,
 				i;
 			
@@ -469,7 +532,8 @@
 			recursion = (recursion) ? recursion : {};
 			
 			// if already created then don't need to do anything so return true, if recursion or loaderror give true back too to get all the processing done;
-			if ((this.state === DEFINED) || (this.state === LOADERROR) || recursion[objEscStr + this.id]) return true;  // remember module property buster for recursion !!
+			if ((this.state === DEFINED) || (this.state === READY) ||
+				 (this.state === LOADERROR) || recursion[objEscStr + this.id]) return true;  // remember module property buster for recursion !!
 			
 			// stil loading or not yet in dependency state so return false
 			if ((this.state === LOADING) || (this.state === LOADED) || (this.state === WAITING)) return false;
@@ -484,23 +548,41 @@
 					return false;
 				} else if (depMod.state !== DEFINED) {
 					// dependency module is not created and it returns that it can't be created then return with false too 
-					if (!depMod.create(recursion)) return false;
+					if (!depMod.checkDependencyState(recursion)) return false;
 				};
 			};
 			delete recursion[objEscStr + this.id];			// remember module property buster !!!
 			
-			// ah, all dependency modules are ready, create mine!!
-			// need reference to require function
-			// need reference to exports
-			// need reference to module object with id and uri of this module
-			// do mixin of result and this.exports
-			this.setState(DEFINED);		// set to true before initialization call because module can request itself.. (circular dep problems) 
-			mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
+			// ah, all dependency modules are ready, set this module to defined!!
+			this.setState(DEFINED);
 			
 			// this module is defined so return true
 			return true;
 		},
 		
+		/**
+		 * Initialize Module.exports by calling creatorFn if all dependencies are ready..
+		 * @return {Module} The ready module, null if factory call not possibele yet
+		 */
+		createModule: function() {
+			if (this.state === DEFINED) {
+				// ah, all dependency modules are ready, create mine!!
+				// need reference to require function
+				// need reference to exports
+				// need reference to module object with id and uri of this module
+				// do mixin of result and this.exports
+				this.setState(READY);		// set to true before initialization call because module can request itself.. (circular dep problems) 
+				mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
+			}
+			
+			// if READY then return this module else return null 
+			return (this.state === READY) ? this : null;
+		},
+		
+		/**
+		 * Create a module specific require callback function with CommonJS defined properties
+		 * @return {function object} module specific require function and properties
+		 */
 		returnRequire: function (){
 			var that = this,
 				reqFunction =  function(){
@@ -510,6 +592,10 @@
 			return reqFunction;
 		},
 	
+		/**
+		 * Create a module specific module object with CommonJS defined properties
+		 * @return {object} object with module specific properties
+		 */
 		returnModule: function (){
 			// already created so return that
 			if (!this.module) {
@@ -522,23 +608,26 @@
 			return this.module;
 		},
 		
+		/**
+		 * Set (loaded) module properties
+		 * @param {array} deps Array of dependencies in not yet normalized id's
+		 * @param {function} factoryFn The factory function to executo to fill the exports object
+		 */
 		define: function(deps, factoryFn) {
-			var i, dep;
-			
 			//Set state of this module to LOADED
 			this.setState(LOADED);
-			
-			// normalize dependencies
-			for (i=0; dep=deps[i]; i++) {
-				// normalize dependancy id relative to the module requiring it
-				dep = this.resolveId(dep);
-				if (dep !== '') this.deps.push(dep);
-			};
+			// save dependencies for later use
+			this.deps = deps;
 			// and set factoryFn
 			this.factoryFn = factoryFn;
 		},
-	
+
+		/**
+		 * Set the state of this module
+		 * @param {object state} state The state to set for this module
+		 */
 		setState: function(state){
+			// add check if state is an allowed state
 			this.state = state;
 		}
 	};
@@ -548,7 +637,7 @@
 	********************************************************************************************/
 
 	/**
-	 * Package class definition
+	 * Package class constructor
 	 * @param {string} uid The global uid of this Package
 	 * @param {string} uri The URI to the root of this Package
 	 */
@@ -567,7 +656,7 @@
 	Package.prototype = {
 		/**
 		 * Start loading a package definition in this package
-		 * @param {} file 
+		 * @param {string} file Specific location of the package.json definition file 
 		 */
 		loadPackageDef: function(file){
 			var id;
@@ -622,6 +711,7 @@
 		
 		/**
 		 * Process a package load by reading the package definition
+		 * @param {} script The script 
 		 */
 		procesPackageDefs: function(script){
 			var def;
@@ -645,8 +735,12 @@
 				setPackage(cfg.uid, this);
 			}
 			
-			// save module id that acts as main package module for parent package
+			// save module id that acts as main package module for parent package and add a defer call to 'require' 
+			// that module when ready by calling startUp
 			this.mainId = (cfg.main) ? this.uid + '!' + cfg.main : null;
+			if (this.mainId) {
+				addDefer(this.mainId, this.startUp, this);
+			};
 			
 			// add lib dir to module uri location if available in cfg else use standard 'lib'
 			this.moduleUri = (cfg.directories && cfg.directories.lib) ? resolveUri(this.uri, cfg.directories.lib) : resolveUri(this.uri, 'lib');
@@ -721,36 +815,39 @@
 			
 			// resolve new dependencies if all scripts are loaded
 			if (scripts.length == 0) {
-				var deps = [];
 				iterate(modules, function(key, mod) {
 					// if module is loaded then look for dependencies to load
 					if (mod.state === LOADED) {
-						// dependencies defined ??
-						if (mod.deps.length > 0) {
-							var dep;
-							// walk through the dependencies to check if the module dependencies already exist and if not load them
-							for (i=0; dep=mod.deps[i]; i++) {
-								// if the dependent id doesnt exists push for loading
-								if (!getModule(dep)) deps.push(dep);
-							};
-						}
-						// dependencies are being loaded for this module
-						mod.setState(DEPENDENCY);
+						mod.resolveDependencies();
 					}
 				});
-				if (deps.length > 0) {
-					this.loadModules(deps, null);
-				}
 			}
 			
-			// while loading dependency scripts or all scripts loaded try to evaluate all elegible modules by calling createFn
+			// while loading dependency scripts or all scripts loaded try to evaluate all elegible modules by checking dependency state
 			iterate(modules, function(key, mod) {
 				// if in dependency state then look if you can create the module
 				if (mod.state === DEPENDENCY) {
 					// recursive 
-					mod.create();
+					mod.checkDependencyState();
 				}
 			});
+			
+			// check if one of the deferred functions waiting for a module is ready
+			iterate(deferred, function(key, fn, deferred) {
+				var module = getModule(key)
+				if (module && ((module.state === DEFINED) || (module.state === READY))) {
+					fn.fn.call(fn.scope);
+					delete deferred.key;
+				}
+			});
+		},
+		
+		/**
+		 * Called when a main module is defined in the package config and if that module is in DEFINED state 
+		 */
+		startUp: function(){
+			var module = getModule(this.mainId);
+			if (module) module.createModule();
 		},
 		
 		setState: function(state){

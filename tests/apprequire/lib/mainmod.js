@@ -42,4 +42,7 @@
  */
 define(['./test/run'], function (require, exports, module) {
 		exports.test = 'Main module for root';
+		
+		// and run the test
+		require('./test/run');
 });
