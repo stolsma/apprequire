@@ -49,6 +49,7 @@
 		horb = doc.getElementsByTagName("head")[0] || doc.getElementsByTagName("body")[0], // get location of scripts in DOM
 		testInteractive = !!global.ActiveXObject,				// test if IE for onload workaround... 
 		objEscStr = '_',										// Object property escape string
+		packageDelimiter = '#',									// The module id package delimiter
 		
 		//The following are module state constants
 		LOADING = 'LOADING',
@@ -412,18 +413,28 @@
 	 */
 	function checkDefer(record) {
 		// check if modules not already in DEFINED/READY state !
-		var test = each(record.ids, function(id, index, list){
-						var module = getModule(id);
-						return (module!== UNDEF && ((module.state === DEFINED) || (module.state === READY)));
-					}, this);
-		
-		// if test is something then one of the modules was not defined yet
-		if (test === UNDEF) {
+		if (each(record.ids, function(id, index, list){
+				var module = getModule(id);
+				return (module!== UNDEF && ((module.state === DEFINED) || (module.state === READY)));
+			}, this) === UNDEF) {
 			record.fn.call(record.scope);
 			return false;
-		} else {
-			return true;
-		}
+		} 
+		return true;
+	}
+	
+	/**
+	 * Check if defered modules are loaded and defined. If true then run callback function.
+	 */
+	function checkAllDeferred() {
+		var newDeferred = [];
+		each(deferred, function(record, index, deferred) {
+			if (checkDefer(record)) {
+				// defer this call again until modules are loaded
+				newDeferred.push(record);
+			}
+		});
+		deferred = newDeferred;
 	}
 	
 	/********************************************************************************************
@@ -504,16 +515,16 @@
 		 */
 		resolveId: function(id) {
 			// if already with package uid then all ok so return id
-			if (id.indexOf('!') !== -1) return id;
+			if (id.indexOf(packageDelimiter) !== -1) return id;
 			
 			// sanatize for the current package
-			var curId = this.id.substring(this.id.indexOf('!')+1);
+			var curId = this.id.substring(this.id.indexOf(packageDelimiter)+1);
 			id = (id.charAt(0) === '.') ? resolveUri(cutLastTerm(curId), id) : resolveUri('', id);
 			
 			// get required package from the sanetized path
 			id = this.parentPackage.resolveMapping(id);
 			
-			return (id.id) ? id.pPackage.uid + '!' + id.id : '';
+			return (id.id) ? id.pPackage.uid + packageDelimiter + id.id : '';
 		},
 		
 		/**
@@ -763,7 +774,7 @@
 			
 			// save module id that acts as main package module for parent package and add a defer call to 'require' 
 			// that module when ready by calling startUp
-			this.mainId = (cfg.main) ? this.uid + '!' + cfg.main : null;
+			this.mainId = (cfg.main) ? this.uid + packageDelimiter + cfg.main : null;
 			if (this.mainId) {
 				addDefer(this.mainId, this.startUp, this);
 			};
@@ -859,14 +870,7 @@
 			});
 			
 			// check if one of the deferred functions waiting for a module is ready
-			var newDeferred = [];
-			each(deferred, function(record, index, deferred) {
-				if (checkDefer(record)) {
-					// defer this call again until modules are loaded
-					newDeferred.push(record);
-				}
-			});
-			deferred = newDeferred;
+			checkAllDeferred();
 		},
 		
 		/**
@@ -887,7 +891,7 @@
 		 * @return {string} The concatenated package uid+id
 		 */
 		addUid: function(id) {
-			return this.uid + '!' + id;
+			return this.uid + packageDelimiter + id;
 		},
 
 		/**
@@ -897,7 +901,7 @@
 		 */
 		searchPath: function(id) {
 			// cut id of parent package id
-			id = id.substring(id.indexOf('!')+1);
+			id = id.substring(id.indexOf(packageDelimiter)+1);
 			
 			// only return path of requested path id else return uri of id relative to parent package   
 			return (this.getPath(id)) ? resolveUri(this.getPath(id), getLastTerm(id)) : resolveUri(this.moduleUri, id);
@@ -977,7 +981,7 @@
 		 * @return Package Parent package of id
 		 */	
 		resolvePackage: function(id) {
-			id = id.substring(0, id.indexOf('!'));
+			id = id.substring(0, id.indexOf(packageDelimiter));
 			return getPackage(id);
 		},
 			
@@ -988,7 +992,7 @@
 		 */	
 		resolveMapping: function(id) {
 			// cut off the package uid if there
-			id = id.substring(id.indexOf('!')+1);
+			id = id.substring(id.indexOf(packageDelimiter)+1);
 			var result = {
 					pPackage: this,
 					id: id
@@ -1001,7 +1005,7 @@
 				result = getPackage(pack.uid).resolveMapping(id);
 			} else if (id === '') {
 				// the main module is requested !! so return the stripped mainId 
-				result.id = (this.mainId) ? this.mainId.substring(this.mainId.indexOf('!')+1) : null;
+				result.id = (this.mainId) ? this.mainId.substring(this.mainId.indexOf(packageDelimiter)+1) : null;
 			}
 			
 			// return the result 
