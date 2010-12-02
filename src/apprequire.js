@@ -68,7 +68,7 @@
 		defQueue = [],											// modules waiting to be defined
 		defPackages = [],										// package configs waiting to be used
 		root = null,											// root package
-		deferred = {};											// array of deferred function calls waiting for modules to be in defined or ready state
+		deferred = [];											// array of deferred function calls waiting for modules to be in defined or ready state
 
 	/**
 	 * Returns true if the passed value is a JavaScript array, otherwise false.
@@ -379,20 +379,50 @@
 	
 	/**
 	 * Set defer function of loading of module
-	 * @param {string} id The uid of the module to wait for.
+	 * @param {string/array} id The resolved uid of the module(s) to wait for.
 	 * @param {function} fn The callback function.
 	 * @param {object} The scope of the callback function
+	 * @return {bool} True if still not ready, false if callback function is called
 	 */
-	function addDefer(id, fn, scope) {
-		var module = getModule(id)
-		if (module && ((module.state === DEFINED) || (module.state === READY))) {
-			fn.call(scope);
-		} else {
-			// defer this call until module is loaded
-			deferred[id] = {
+	function addDefer(ids, fn, scope) {
+		// change string to array
+		ids = (typeof ids == 'string') ? [ids]: ids;
+		
+		// create deferred record
+		var record = {
+				ids: ids,
 				fn: fn,
 				scope: scope
 			};
+		
+		// check if defer needed 
+		if (checkDefer(record)) {
+			// defer this call until module is loaded
+			deferred.push(record);
+			return true;
+		}
+		// all modules where ready already
+		return false
+	}
+	
+	/**
+	 * Check if defer record is loaded and the fn can be called.
+	 * @param {object} record The defer record to check.
+	 * @return {bool} True if still not ready, false if callback function is called
+	 */
+	function checkDefer(record) {
+		// check if modules not already in DEFINED/READY state !
+		var test = each(record.ids, function(id, index, list){
+						var module = getModule(id);
+						return (module!== UNDEF && ((module.state === DEFINED) || (module.state === READY)));
+					}, this);
+		
+		// if test is something then one of the modules was not defined yet
+		if (test === UNDEF) {
+			record.fn.call(record.scope);
+			return false;
+		} else {
+			return true;
 		}
 	}
 	
@@ -422,46 +452,11 @@
 	Module.prototype = {
 		/**
 		 * Local require function
-		 * Two 'legal' possible uses:
-		 * 	- deps, delayFn (ensure)
-		 *	- id (require)
 		 * @param {string} id
-		 * @param {array] deps
-		 * @param {function} delayFn
 		 */
-		 //***********************************************************************************************************************
-		 // async require needs to be implemented (delayFn is defined but not used at this moment)
-		 //***********************************************************************************************************************
-		require: function(id, deps, delayFn) {
-			if (isArray(id)) {
-				delayFn = deps;
-				deps = id;
-				id = null;
-			}
-			
-			if (typeof deps === 'function') {
-				delayFn = deps;
-				deps = [];
-			};
-			
-			if (deps === UNDEF) deps = [];
-			
+		require: function(id) {
 			// normalize id if not empty
 			id = (id === '') ? id : this.resolveId(id);
-			
-			// if no id then ensure call
-			if (id === null) {
-				var result = [], i, dep;
-				
-				for (i=0; dep=deps[i]; i++) {
-					// normalize dependancy id relative to the module requiring it
-					dep = this.resolveId(dep);
-					result.push(dep);
-				};
-				
-				this.parentPackage.loadModules(result, delayFn); // ensure callback is called when all modules are loaded
-				return UNDEF;
-			} 
 			
 			// get requested module
 			var mod = getModule(id);
@@ -475,6 +470,31 @@
 			
 			// just a normal require call and return exports of requested module 
 			return mod.exports;
+		},
+		
+		/**
+		 * Local require.ensure function
+		 * @param {array] deps Modules that need to be in DEFINED state before cb is called
+		 * @param {function} cb Callback function called when deps are in DEFINED state
+		 */
+		ensure: function(deps, cb) {
+			var require = this.returnRequire(),
+				fn = (cb === UNDEF) ? function(){} : function(){ cb.call(null, require);};
+			if (deps === UNDEF) deps = [];
+			
+			// normalize dependancy ids relative to the module requiring it
+			for (var i=0; deps[i]; i++) {
+				deps[i] = this.resolveId(deps[i]);
+			};
+			
+			// check deferred list to verify all modules are not already loaded
+			if (addDefer(deps, fn, this)) {			
+				// else start loading the modules
+				this.parentPackage.loadModules(result);
+			};
+			
+			// return undefined at this moment, standard is not clear about this.
+			return UNDEF;
 		},
 		
 		/**
@@ -512,7 +532,7 @@
 					dep = this.resolveId(dep);
 					deps[i] = dep;
 					// if the dependent id doesnt exists load it
-					if (!getModule(dep)) this.parentPackage.loadModules(dep, null);
+					if (!getModule(dep)) this.parentPackage.loadModules(dep);
 				};
 			}
 			// dependencies are being loaded for this module
@@ -588,6 +608,12 @@
 				reqFunction =  function(){
 					return that.require.apply(that, arguments);
 				}
+			
+			// also add require.ensure function	
+			reqFunction.ensure = function(){
+				return that.ensure.apply(that, arguments);
+			};
+			// add a reference to the main package main module
 			reqFunction.main = (root.mainId) ? getModule(root.mainId).returnModule() : { id: '', uri: ''};
 			return reqFunction;
 		},
@@ -833,13 +859,14 @@
 			});
 			
 			// check if one of the deferred functions waiting for a module is ready
-			iterate(deferred, function(key, fn, deferred) {
-				var module = getModule(key)
-				if (module && ((module.state === DEFINED) || (module.state === READY))) {
-					fn.fn.call(fn.scope);
-					delete deferred.key;
+			var newDeferred = [];
+			each(deferred, function(record, index, deferred) {
+				if (checkDefer(record)) {
+					// defer this call again until modules are loaded
+					newDeferred.push(record);
 				}
 			});
+			deferred = newDeferred;
 		},
 		
 		/**
@@ -854,13 +881,19 @@
 			this.state = state;
 		},
 		
+		/**
+		 * Add this package uid to the given id
+		 * @param {string} id The id to add the package uid to
+		 * @return {string} The concatenated package uid+id
+		 */
 		addUid: function(id) {
 			return this.uid + '!' + id;
 		},
 
 		/**
 		 * Returns the URI path to the physical location of the requested module id
-		 * @return string URI path to the physical location of the requested module id
+		 * @param {string} id Full id 
+		 * @return {string} URI path to the physical location of the requested module id
 		 */
 		searchPath: function(id) {
 			// cut id of parent package id
@@ -870,18 +903,40 @@
 			return (this.getPath(id)) ? resolveUri(this.getPath(id), getLastTerm(id)) : resolveUri(this.moduleUri, id);
 		},
 		
+		/**
+		 * Returns the named path object
+		 * @param {string} id Reference to the path object to get
+		 * @return {object} Path object
+		 */
 		getPath: function(id) {
 			return this.path[objEscStr + id];
 		},
 	
+		/**
+		 * Sets the named path object
+		 * @param {string} id Reference to the path object to save
+		 * @param {object} value Path object to save
+		 * @return {object} Saved path object
+		 */
 		setPath: function(id, value) {
 			return this.path[objEscStr + id] = value;
 		},
 		
+		/**
+		 * Returns the named mapping object
+		 * @param {string} id Reference to the mapping object to get
+		 * @return {object} Mapping object
+		 */
 		getMapping: function(id) {
 			return this.mappings[objEscStr + id];
 		},
 	
+		/**
+		 * Sets the named mapping object
+		 * @param {string} id Reference to the mapping object to save
+		 * @param {object} value Mapping object to save
+		 * @return {object} Saved mapping object
+		 */
 		setMapping: function(id, value) {
 			return this.mappings[objEscStr + id] = value;
 		},
@@ -890,9 +945,8 @@
 		 * Local module/transport load function. Resolve id to full path id's. Checks if module is already loading and 
 		 * if not defines script tag with this.createModule as callback function if file loaded. 
 		 * @param {array/string} ids Array of normalized module ids or normalized id string to be loaded
-		 * @param {function} fn Callback function to be called when all referenced id's (with dependencies) are defined and available
 		 */
-		loadModules: function(ids, fn) {
+		loadModules: function(ids) {
 			var id,
 				pPackage,
 				uri,
@@ -956,6 +1010,11 @@
 			
 		/**
 		 * Create scripttag for given id, uri and callback/scope function
+		 * @param {string} id Full id of the unnamed modules in this script to load
+		 * @param {string} uri The full uri to the script to load
+		 * @param {Package} parentPackage The package that requested the load 
+		 * @param {function} cb Callback function to call
+		 * @param {object} scope Scope of the Callback function
 		 */
 		insertScriptTag: function(id, uri, parentPackage, cb, scope) {
 			// create file tag from scripttag
@@ -977,6 +1036,7 @@
 		
 		/**
 		 * clean all temporary vars to prevent possible memory leaking
+		 * @param {ScriptDom} script The script dom object with 'extra' added properties (_done, etc)
 		 */
 		cleanScriptTag: function(script) {
 			script._done = true;
@@ -990,6 +1050,9 @@
 		
 		/**
 		 * Returns a closure function that will be called when the script is loaded
+		 * @param {ScriptDom} script The script dom object with 'extra' added properties (_done, etc)
+		 * @param {function} cb Callback function to call when the script is loaded
+		 * @param {object} scope Scope of the Callback function
 		 */
 		scriptLoad: function(script, cb, scope) {
 			return function(){
@@ -1002,6 +1065,9 @@
 		
 		/**
 		 * Returns a closure function that will be called when there is an loaderror for a script
+		 * @param {ScriptDom} script The script dom object with 'extra' added properties (_done, etc)
+		 * @param {function} cb Callback function to call when error happens
+		 * @param {object} scope Scope of the Callback function
 		 */
 		scriptError: function(script, cb, scope) {
 			return function(){
@@ -1011,6 +1077,9 @@
 		
 		/**
 		 * Returns a closure function that will be called when a script insertion times out
+		 * @param {ScriptDom} script The script dom object with 'extra' added properties (_done, etc)
+		 * @param {function} cb Callback function to call when timer expires
+		 * @param {object} scope Scope of the Callback function
 		 */
 		scriptTimer: function(script, cb, scope) {
 			return function(){
@@ -1026,29 +1095,32 @@
 
 	/**
 	 * Called when a module in a loaded modules javascript file is declared/defined
+	 * @param {string} id Id of the module to declare
+	 * @param {array} deps Array of module ids this defined module depends on
+	 * @param {function} factoryFn The factory function to execute to fill the exports object
 	 */
-	function declare(id, deps, delayFn) {
+	function declare(id, deps, factoryFn) {
 		var commentRegExp = /(\/\*([\s\S]*?)\*\/|\/\/(.*)$)/mg;
 		var	cjsRequireRegExp = /require\(["']([\w-_\.\/]+)["']\)/g;
 
 		//Allow for anonymous functions
 		if (typeof id !== 'string') {
 			//Adjust args appropriately
-			delayFn = deps;
+			factoryFn = deps;
 			deps = id;
 			id = null;
 		}
 
 		//This module may not have dependencies
 		if (!isArray(deps)) {
-			delayFn = deps;
+			factoryFn = deps;
 			deps = [];
 		}
 
 		//If no name, no deps and delayFn is a function, then figure deps out by scraping code.
-		if (!name && !deps.length && (typeof delayFn === 'function')) {
+		if (!name && !deps.length && (typeof factoryFn === 'function')) {
 			//Remove comments from the callback string, then look for require calls, and pull them into the dependencies.
-			delayFn.toString().replace(commentRegExp, "").replace(cjsRequireRegExp, function (match, dep) {
+			factoryFn.toString().replace(commentRegExp, "").replace(cjsRequireRegExp, function (match, dep) {
 				deps.push(dep);
 			});
 		}
@@ -1067,9 +1139,13 @@
 
 		//Always save off evaluating the def call until the script onload handler. This allows multiple modules to be in a file without prematurely
 		//tracing dependencies, and allows for anonymous module support, where the module name is not known until the script onload event occurs.
-		defQueue.push([id, deps, delayFn, currentScript]);
+		defQueue.push([id, deps, factoryFn, currentScript]);
 	}
 
+	/**
+	 * Called when a package in a loaded javascript file is declared/defined
+	 * @param {config object} cfg The config defining the package
+	 */
 	function definePackage(cfg) {
 		var currentScript = null;
 		// From the techniques in RequireJS (requirejs.org) by James Burke and Kris Zyp
@@ -1087,7 +1163,8 @@
 	}
 	
 	/**
-	 * Do all initialization steps...
+	 * Do all initialization steps needed to startup module system...
+	 * @param {config object} cfg The config defining the system state at startup
 	 */
 	function startup(cfg) {
 		var scriptList = document.getElementsByTagName("script"),
@@ -1104,6 +1181,7 @@
 				directories: {
 					lib: './lib'
 				},
+				debug: true,
 				waitSeconds: 6000,
 				baseUrlMatch: /apprequire\.js/i
 			},			
@@ -1146,7 +1224,7 @@
 		root = new Package('commonjs.org', src); //).procesPackageCfg(cfg);
 		
 		// initialize global hooks
-		initGlobals();
+		initGlobals(cfg.debug);
 		
 		// load Main script (if requested) in main package
 		if (dataMain) {
@@ -1173,23 +1251,23 @@
 	
 	/**
 	 * create all global hooks for CommonJS support
+	 * @param {bool} debug Add modules, packages and deferred hooks to global module namespace for debugging
 	 */
-	function initGlobals(){
-		// define global require namespace with ensure function
+	function initGlobals(debug) {
+		// define global require namespace
 		var require = global.require = {};
-//		var require = global.require = root.returnRequire();
-//		require.ensure = require;
 		require['package'] = definePackage; // array defenition because of minifier not accepting package propertie on objects... :-(
 		
 		// define global module namespace with the declare functions
 		global.module = {};
-//		require.main = global.module = root.returnModule();
 		global.module.declare = declare;
 		
-		//*********************************************************************************
-		global.module.modules = modules; // added for firebug testing to check modules etc, ***** Delete for production !!!!!! *****
-		global.module.packages = packages; // added for firebug testing to check modules etc, ***** Delete for production !!!!!! *****
-		//*********************************************************************************
+		if (debug) {
+			// added for firebug testing to check modules etc
+			global.module.modules = modules;
+			global.module.packages = packages;
+			global.module.deferred = deferred;
+		}
 		
 		// implemented for module compatibility with requireJS
 		global.define = declare;
