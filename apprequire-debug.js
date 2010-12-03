@@ -50,6 +50,7 @@
 		testInteractive = !!global.ActiveXObject,				// test if IE for onload workaround... 
 		objEscStr = '_',										// Object property escape string
 		packageDelimiter = '#',									// The module id package delimiter
+		loaderDelimiter = '!',									// The module id loader delimiter
 		
 		//The following are module state constants
 		LOADING = 'LOADING',
@@ -182,8 +183,8 @@
 				target[prop] = source[prop];
 			}
 		}
-	};
-	
+	}
+
 	/**
 	 * Apply the offset uri to the base uri (relative etc..)
 	 * @param {uri} base The basepath to resolve to
@@ -417,7 +418,10 @@
 				var module = getModule(id);
 				return (module!== UNDEF && ((module.state === DEFINED) || (module.state === READY)));
 			}, this) === UNDEF) {
-			record.fn.call(record.scope);
+			var cb = function(){
+					record.fn.call(record.scope);
+				};
+			setTimeout(cb, 1);
 			return false;
 		} 
 		return true;
@@ -490,18 +494,31 @@
 		 */
 		ensure: function(deps, cb) {
 			var require = this.returnRequire(),
-				fn = (cb === UNDEF) ? function(){} : function(){ cb.call(null, require);};
+				fn = (cb === UNDEF) ? function(){} : function(){ cb.call(null, require);},
+				dep, lDeps = [];
+				
 			if (deps === UNDEF) deps = [];
 			
 			// normalize dependancy ids relative to the module requiring it
 			for (var i=0; deps[i]; i++) {
-				deps[i] = this.resolveId(deps[i]);
+				// cut ModuleLoader if in dependency 
+				dep = this.splitLoader(deps[i]);
+				// resolve given dependency
+				deps[i] = dep[1] = this.resolveId(dep[1]);
+				// save for load
+				lDeps.push(dep);
 			};
 			
 			// check deferred list to verify all modules are not already loaded
 			if (addDefer(deps, fn, this)) {			
 				// else start loading the modules
-				this.parentPackage.loadModules(result);
+				// walk through the dependencies to check if the module dependencies already exist and if not load them
+				for (var i=0; dep=lDeps[i]; i++) {
+					// normalize the module loader id
+					dep[0] = (dep[0] !== '') ? this.resolveId(dep[0]) : '';
+					// if the dependent id doesnt exists load it
+					if (!getModule(dep[1])) this.parentPackage.moduleLoader(dep[1], dep[0]);
+				};
 			};
 			
 			// return undefined at this moment, standard is not clear about this.
@@ -539,15 +556,27 @@
 				var dep;
 				// walk through the dependencies to check if the module dependencies already exist and if not load them
 				for (i=0; dep=deps[i]; i++) {
-					// normalize dep id and save for later use
-					dep = this.resolveId(dep);
-					deps[i] = dep;
+					// split loader and id
+					dep = this.splitLoader(dep);
+					// normalize dependency id and save the normalized id in the module dependency array
+					deps[i] = dep[1] = this.resolveId(dep[1]);
+					dep[0] = (dep[0] !== '') ? this.resolveId(dep[0]) : '';
 					// if the dependent id doesnt exists load it
-					if (!getModule(dep)) this.parentPackage.loadModules(dep);
+					if (!getModule(dep[1])) this.parentPackage.moduleLoader(dep[1], dep[0]);
 				};
 			}
 			// dependencies are being loaded for this module
 			this.setState(DEPENDENCY);
+		},
+		
+		/**
+		 * split given id in loader and module id part
+		 * @param {string} id Module id to split
+		 * @return {array} Array of loader and id
+		 */
+		splitLoader: function(id) {
+			// cut loadername from id and return in array
+			return [id.substring(0, id.indexOf(loaderDelimiter)), id.substring(id.indexOf(loaderDelimiter)+1)];
 		},
 
 		/**
@@ -579,7 +608,9 @@
 					return false;
 				} else if (depMod.state !== DEFINED) {
 					// dependency module is not created and it returns that it can't be created then return with false too 
-					if (!depMod.checkDependencyState(recursion)) return false;
+					if (!depMod.checkDependencyState(recursion)) {
+						return false;
+					}
 				};
 			};
 			delete recursion[objEscStr + this.id];			// remember module property buster !!!
@@ -623,6 +654,10 @@
 			// also add require.ensure function	
 			reqFunction.ensure = function(){
 				return that.ensure.apply(that, arguments);
+			};
+			// also add require.toUrl function	
+			reqFunction.toUrl = function(){
+				return that.uri;
 			};
 			// add a reference to the main package main module
 			reqFunction.main = (root.mainId) ? getModule(root.mainId).returnModule() : { id: '', uri: ''};
@@ -742,7 +777,7 @@
 			// see if main module is already defined else load it, can't do this check in procesPackageCfg
 			// because waiting module defs loaded inline with the package def are not processed at that moment.
 			if ((this.mainId !== null) && !getModule(this.mainId)) {
-				this.loadModules(this.mainId);
+				this.moduleLoader(this.mainId);
 			}
 		},
 		
@@ -946,39 +981,97 @@
 		},
 		
 		/**
-		 * Local module/transport load function. Resolve id to full path id's. Checks if module is already loading and 
-		 * if not defines script tag with this.createModule as callback function if file loaded. 
-		 * @param {array/string} ids Array of normalized module ids or normalized id string to be loaded
+		 * Route the module to load to the correct loader
+		 * @param {string} loader The loader Module to use
+		 * @param {string} id The module id to load.
 		 */
-		loadModules: function(ids) {
-			var id,
-				pPackage,
+		moduleLoader: function(id, loader) {
+			var pPackage,
 				uri,
 				module;
-				
-			// change string to array
-			ids = (typeof ids == 'string') ? [ids]: ids;
 			
-			for (; id = ids.pop();){
-				// if module doesn't exist already 
-				if (!getModule(id)) {
-					// get parent package of this id
-					pPackage = this.resolvePackage(id);
-					
-					// get url path
-					uri = pPackage.searchPath(id);
-					
-					// create module and load corresponding script
-					module = setModule(id, new Module(pPackage, id, cutLastTerm(uri)));
-					this.insertScriptTag(id, uri + ".js", pPackage, pPackage.procesQueues, pPackage); // set the module to load!!
+			// if module not defined already then call correct loader and make module 
+			if (!getModule(id)) {
+				// get parent package of this id
+				pPackage = this.resolvePackage(id);
+				// get url path
+				uri = pPackage.searchPath(id);
+				// create module
+				module = setModule(id, new Module(pPackage, id, uri));
+				
+				// if no loadername then just assume js load is requested
+				if ((loader === UNDEF) || (loader === '')) this.loadJSModule(id, uri, pPackage)
+				else {
+					//call the correct loader module
+					addDefer([loader], this.createLoaderCb(loader, id, module.returnRequire()), this)					
 				}
 			}
 		},
 		
 		/**
+		 * Create callback to used by the Defer waiting for the ModuleLoader module to be loaded.
+		 * @param {string} loader Id of the loader module
+		 * @param {string} id Id of the module to be loaded by the loader
+		 * @param {function} mRequire The require function of the module that needs to be loaded by the ModuleLoader
+		 * @return {function} Function closure that calls the ModuleLoader load function
+		 */
+		createLoaderCb: function(loader, id, mRequire) {
+			return function() {
+				var mod = getModule(loader);
+				if (!mod.createModule() || (mod.state === LOADING) || (mod.state === LOADERROR)) {
+					// module exists but is not loaded (when error loading file)
+					throw "Module: " + id + " is not loaded or in error state!!";
+				} else {		
+					// just a normal require call and return exports of requested module 
+					if (mod.exports.load) mod.exports.load.call(null, id, mRequire, this.createModuleLoadedCb(id))	
+				}
+			}
+		},
+		
+		/**
+		 * Create callback function for a ModuleLoader to call when the requested module is loaded
+		 * by the module loader
+		 * @param {string} id Id of the module to be loaded by the loader
+		 * @return {function} Function closure that sets the exports and state of the requested module that is loaded by the ModuleLoader
+		 */
+		createModuleLoadedCb: function(id){
+			var that = this;
+			return function(exports) {
+				// set requested module to loaded with exports to exports
+				var mod = getModule(id);
+				mod.setState(READY);
+				mod.deps = [];
+				mod.factoryFn = function(){};
+				mixin(mod.exports, exports);
+				
+				// try to evaluate all elegible modules by checking dependency state
+				iterate(modules, function(key, mod) {
+					// if in dependency state then look if you can create the module now this module is loaded
+					if (mod.state === DEPENDENCY) {
+						// recursive 
+						mod.checkDependencyState();
+					}
+				});
+			
+				// module is ready so call deferred to start depending callbacks
+				checkAllDeferred();
+			}
+		},
+
+		/**
+		 * Local module/transport load function, defines script tag with procesQueues as callback function if file loaded. 
+		 * @param {string} id Normalized id of module to be loaded
+		 * @param {string} uri Normalized uri of module to be loaded
+		 * @param {Package} pPackage Parent package of the module to be loaded
+		 */
+		loadJSModule: function(id, uri, pPackage) {
+			this.insertScriptTag(id, uri + ".js", pPackage, pPackage.procesQueues, pPackage); // set the module to load!!
+		},
+		
+		/**
 		 * Resolve from an id the parent package object
 		 * @param {string} id Full id 
-		 * @return Package Parent package of id
+		 * @return Package Parent package of id, UNDEF if non existent.
 		 */	
 		resolvePackage: function(id) {
 			id = id.substring(0, id.indexOf(packageDelimiter));
@@ -1248,7 +1341,7 @@
 				}, true);
 			} else if (cfg.main !== null) {
 				// else load main module from remote location
-				root.loadModules(root.mainId);
+				root.moduleLoader(root.mainId);
 			}
 		}; 			
     }
@@ -1270,7 +1363,6 @@
 			// added for firebug testing to check modules etc
 			global.module.modules = modules;
 			global.module.packages = packages;
-			global.module.deferred = deferred;
 		}
 		
 		// implemented for module compatibility with requireJS
