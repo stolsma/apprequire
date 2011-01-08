@@ -30,6 +30,7 @@
 	0.1		02-10-2010	Creation of first skelleton version of apprequire
 	0.2.1	20-11-2010	Changes in module/package id and uri writing, addings tests
 	0.3		21-11-2010	Changes package and module id handling
+	0.4		08-01-2011	Implemented require.package to load package defs on demand
 \-------------------------------------------------------------------------------------*/
 /**
  * Testing an implementation of CommonJS modules and Package loading
@@ -659,7 +660,7 @@
 			reqFunction.package = function(){
 				return that.parentPackage.createMappings.apply(that.parentPackage, arguments);
 			};
-			// TODO add require.packages.ensure for an ensure version of loading packages
+			// TODO add require.packages.ensure for an ensure version of loading package defs
 			
 			// also add require.toUrl function	
 			reqFunction.toUrl = function(){
