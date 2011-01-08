@@ -31,6 +31,25 @@
 \-------------------------------------------------------------------------------------*/
 
 define('css', [], function (require, exports, module) {
+	var ua = navigator.userAgent.toLowerCase(),
+		check = function(r){
+			return r.test(ua);
+		},
+		isOpera = check(/opera/),
+		isChrome = check(/\bchrome\b/),
+		isWebKit = check(/webkit/),
+		isSafari = !isChrome && check(/safari/),
+		isSafari2 = isSafari && check(/applewebkit\/4/), // unique to Safari 2
+		isSafari3 = isSafari && check(/version\/3/),
+		isSafari4 = isSafari && check(/version\/4/),
+		isIE = !isOpera && check(/msie/),
+		isIE7 = isIE && check(/msie 7/),
+		isIE8 = isIE && check(/msie 8/),
+		isIE6 = isIE && !isIE7 && !isIE8,
+		isGecko = !isWebKit && check(/gecko/),
+		isGecko2 = isGecko && check(/rv:1\.8/),
+		isGecko3 = isGecko && check(/rv:1\.9/);
+	
 	/**
 	 * When a module loader needs to resolve a module id in the loader plugin form, it
 	 * shall load the loader plugin module referenced by the string before the '!' character.
@@ -47,12 +66,22 @@ define('css', [], function (require, exports, module) {
 	 * the referenced module id. 
 	 */
 	exports.load = function(resourceId, pRequire, loaded) {
-//		loaded({});
 		var url = pRequire.toUrl(resourceId),
-			name = 'c'; // get last part minus the .css extension
+			name = getLastTerm(resourceId);		// get last part minus the .css extension
 		
-		// start loading the css file
-		genCSSNode(url+'.css', createCssLoaded(loaded), name);
+		// start loading the css file with a cb function calling loaded with an empty object
+		genCSSNode(url+'.css', function(){loaded.call(null, {});}, name);
+	}
+	
+	/**
+	 * Get the last term from a URI string and return it
+	 * @param {string} uri The path string to cut the last term off.
+	 * @return {string} Last term
+	 */
+	function getLastTerm(uri) {
+		uri = uri.split('/');
+		uri = uri.slice(uri.length-1);
+		return uri[0];
 	}
 	
 	/**
@@ -75,25 +104,21 @@ define('css', [], function (require, exports, module) {
 		var objHead = document.getElementsByTagName('head');						// add a link tag (CSS sheet) to the head of the page
 		if (objHead[0]) {
 			var objCSS = document.createElement('link');
-//			var elementNode = Ext.get(objCSS);
 			objCSS.rel = 'stylesheet';
 			objCSS.type = 'text/css';
 			objCSS.href = CSSPath;
 			objHead[0].appendChild(objCSS);
 		}
 		
-//		if (Ext.isGecko || Ext.isSafari) {
-		if (true) {
+		if (isGecko || isSafari) {
 			var el = document.createElement('div');									// add dom element to check on
 			el.id = 'css-done-' + cssName;											// give it a id
 			document.body.appendChild(el);
 			setTimeout(createCssPoll(cb, cssName, el), 1);							// check later if css is loaded
 		} else {
-			if (cb) {
-				Ext.isIE ? elementNode.on('readystatechange', function(){
-					(this.dom.readyState == 'loaded' || this.dom.readyState == 'complete') && cb(); 
-				}) : elementNode.on("load", cb);
-			}
+			isIE ? objCSS.onreadystatechange = function(){
+				(objCSS.readyState == 'loaded' || objCSS.readyState == 'complete') && cb(); 
+			} : objCSS.onload = cb;
 		}
 	}
 	
@@ -101,8 +126,8 @@ define('css', [], function (require, exports, module) {
 		return cssPoll = function() {
 			if (getStyle(el, 'display') === 'none') {
 				// Once the element's display property changes, we know the CSS has finished loading.
-//				el.remove();
-				if (cb) cb.call(this);												// call callback		
+				el.parentNode.removeChild(el);
+				cb.call();															// call callback		
 			} else {
 				// The element's display property hasn't changed yet, so call this function again in 5ms.
 				setTimeout(createCssPoll(cb, cssName, el), 5);						// check later if css is loaded

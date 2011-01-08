@@ -655,6 +655,12 @@
 			reqFunction.ensure = function(){
 				return that.ensure.apply(that, arguments);
 			};
+			// also add require.package function
+			reqFunction.package = function(){
+				return that.parentPackage.createMappings.apply(that.parentPackage, arguments);
+			};
+			// TODO add require.packages.ensure for an ensure version of loading packages
+			
 			// also add require.toUrl function	
 			reqFunction.toUrl = function(){
 				return that.uri;
@@ -823,7 +829,19 @@
 			}, this);
 			
 			// iterate through all the mappings to create and load new packages
-			iterate(cfg.mappings, function(newId, mapcfg) {
+			this.createMappings(cfg.mappings);
+			
+			return this;																		// ready for next function on this package
+		},
+		
+		
+		/**
+		 * Map new package to short id and if the package is not already loaded define and load it
+		 * @param (object) mappings Standard mapping object
+		 */
+		createMappings: function(mappings){
+			// iterate through all the mappings to create and load new packages
+			iterate(mappings, function(newId, mapcfg) {
 				var mapping = {}; 
 				mapping.uri = (mapcfg.location) ? resolvePath(this.uri, mapcfg.location) : '';	// get the location of the mapped package
 				mapping.uid = (mapcfg.uid) ? mapcfg.uid : mapping.uri;							// get the uid of the mapped package
@@ -833,8 +851,6 @@
 					(new Package(mapping.uid, mapping.uri)).loadPackageDef();					// if not already defined then define this new package and start loading def
 				}
 			}, this);
-			
-			return this;																		// ready for next function on this package
 		},
 		
 		/**
@@ -1021,9 +1037,10 @@
 				if (!mod.createModule() || (mod.state === LOADING) || (mod.state === LOADERROR)) {
 					// module exists but is not loaded (when error loading file)
 					throw "Module: " + id + " is not loaded or in error state!!";
-				} else {		
+				} else {
+					var sid = id.substring(id.indexOf(packageDelimiter)+1);		
 					// just a normal require call and return exports of requested module 
-					if (mod.exports.load) mod.exports.load.call(null, id, mRequire, this.createModuleLoadedCb(id))	
+					if (mod.exports.load) mod.exports.load.call(null, sid, mRequire, this.createModuleLoadedCb(id))	
 				}
 			}
 		},
