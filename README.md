@@ -1,3 +1,4 @@
-A general purpose browser-side CommonJS module loader 
+AppRequire
 
-AppRequire is a general purpose browser-side CommonJS module loader.
+AppRequire is a generic CommonJS Environment Framework implementation to test the philosopy of the proposed framework description.
+
