@@ -1,6 +1,6 @@
 {
     "projectName": "AppRequire",
-    "licenseText": "/**\n * AppRequire - http://code.tolsma.net/apprequire\n * Copyright(c) 2010 Sander Tolsma/TTC\n * licensing@tolsma.net\n * http://code.tolsma.net/licenses\n */",
+    "licenseText": "/**\n * AppRequire - http://code.tolsma.net/apprequire\n * Copyright(c) 2010-2011 Sander Tolsma/TTC\n * licensing@tolsma.net\n * http://code.tolsma.net/licenses\n */",
     "builds": [
         {
             "name": "AppRequire",

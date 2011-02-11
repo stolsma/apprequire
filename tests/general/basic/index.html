@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Program Runner</title>
+    <script src="../../../apprequire-debug.js"></script>
+    <script>
+		var test = decodeURIComponent((location.search || "?").substring(1));
+		
+		function printResults(txt, style) {
+			var d = document.createElement("div");
+			setTextContent(d, txt);
+			d.className = style;
+			document.body.appendChild(d);
+		}
+		
+		function setTextContent(e, txt) {
+			if (typeof e.innerText === "string") e.innerText = txt;
+			else e.textContent = txt;
+		}
+		
+		// standard module testing \\		
+		// add main environment location
+		module.api.cms.addMapping('', 'http://sander.tolsma.net/root/');
+		// add module in main environment
+		module.api.cms.memoize('dummy4', ['dep1', 'dep2'], function(){});
+		// add main module in main environment
+		module.api.cms.memoize('', ['dep1', 'dep2'], function(){});
+		
+		// mappings testing \\
+		// add test mapping 
+		module.api.cms.addMapping('test', 'http://sander.tolsma.net/testroot/');
+		// add module in package under test mapping
+		module.api.cms.memoize('test/dummy3', ['dep1', 'dep2'], function(){});
+		// add main module for test package
+		module.api.cms.memoize('test', ['dep1', 'dep2'], function(){});
+
+		// add test mapping to another mapping same root
+		module.api.cms.addMapping('test1', 'http://sander.tolsma.net/testroot/');
+		// add module in package under test1 mapping, will not be created!!
+		module.api.cms.memoize('test1/dummy3', ['dep3', 'dep4'], function(){});
+	
+    </script>
+</head>
+<body>
+    <h1>Program Runner</h1>
+</body>
+</html>
