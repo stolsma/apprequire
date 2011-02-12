@@ -19,25 +19,19 @@
 		}
 		
 		// standard module testing \\		
-		// add main environment location
-		module.api.cms.addMapping('', 'http://sander.tolsma.net/root/');
 		// add module in main environment
-		module.api.cms.memoize('dummy4', ['dep1', 'dep2'], function(){});
+		module.api.cms.memoize('http://sander.tolsma.net/root/', 'dummy4', ['dep1', 'dep2'], function(){}, 'http://sander.tolsma.net/root/dummy4');
 		// add main module in main environment
-		module.api.cms.memoize('', ['dep1', 'dep2'], function(){});
+		module.api.cms.memoize('http://sander.tolsma.net/root/', '', ['dep1', 'dep2'], function(){}, 'http://sander.tolsma.net/root/mainmodule');
 		
-		// mappings testing \\
-		// add test mapping 
-		module.api.cms.addMapping('test', 'http://sander.tolsma.net/testroot/');
+		// system root testing \\
 		// add module in package under test mapping
-		module.api.cms.memoize('test/dummy3', ['dep1', 'dep2'], function(){});
+		module.api.cms.memoize('http://sander.tolsma.net/testroot/', 'dummy3', ['dep1', 'dep2'], function(){}, 'http://sander.tolsma.net/testroot/dummy3');
 		// add main module for test package
-		module.api.cms.memoize('test', ['dep1', 'dep2'], function(){});
+		module.api.cms.memoize('http://sander.tolsma.net/testroot/', '', ['dep1', 'dep2'], function(){}, 'http://sander.tolsma.net/testroot/mainmodule');
 
 		// add test mapping to another mapping same root
-		module.api.cms.addMapping('test1', 'http://sander.tolsma.net/testroot/');
-		// add module in package under test1 mapping, will not be created!!
-		module.api.cms.memoize('test1/dummy3', ['dep3', 'dep4'], function(){});
+		module.api.cms.memoize('http://sander.tolsma.net/testroot/', 'dummy3', ['dep3', 'dep4'], function(){}, 'http://sander.tolsma.net/testroot/dummy3');
 	
     </script>
 </head>

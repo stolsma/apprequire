@@ -28,127 +28,40 @@
 \-------------------------------------------------------------------------------------*/
 /**
  * Testing an implementation of the CommonJS Environment Framework (http://code.tolsma.net/blog/commonjs)
+ * Code in this file is an example implementation of the CommonJS Core Module Layer
  *
  * Based on CommonJS (http://www.commonjs.org) specs, discussions on the Google Groups CommonJS lists 
  * (http://groups.google.com/group/commonjs), RequireJS 0.14.5 (James Burke, http://requirejs.org), 
  * FlyScript.js (copyright Kevin H. Smith, https://github.com/khs4473), BravoJS (copyright Wes Garland,
  * http://code.google.com/p/bravojs/), Pinf/Loader (copyright Christoph Dorn, https://github.com/pinf/loader-js)
- * and utility code of Ext Core / ExtJS 3.2.1. (copyright Sencha, http://www.sencha.com)
+ * and utility code (mixin function) of Ext Core (copyright Sencha, http://www.sencha.com)
  *
  * For documentation how to use this: http://code.tolsma.net/apprequire
  */
  
 /**
- * Closure definition with 'this' refering to 'window' or current scope
+ * Core Module Layer API definition
  */
-(function () {
-	var global = this,											// 'window' or current scope
-		UNDEF,													// undefined constant for comparison functions
+// Check for an existing version of a module object. If that does not exists then define a new module reference.
+if (typeof this.window == "undefined" || ""+this.window == "undefined") {
+	// We are running on a server 
+	// todo: define module in server environment
+} else {
+	// We are most likely running in a browser
+	if (!window.module) window.module = {};
+}
+
+// define the Core Module Layer API
+module.api = function(){
+	var UNDEF,													// undefined constant for comparison functions
 		objEscStr = '_',										// Object property escape string
 		CMS,													// The Core Module System
+		rootURIDelimiter = '#',									// The system root module id delimiter
 		
 		//The following are module state constants
 		INIT = 'INIT',
 		READY = 'READY';
 		
-	/**
-	 * Returns true if the passed value is a JavaScript array, otherwise false.
-	 * @param {Mixed} value The value to test
-	 * @return {Boolean}
-	 */
-	function isArray(v){
-		var tString = Object.prototype.toString;				// short version of toString for isxxxx functions
-		return tString.apply(v) === '[object Array]';
-	}
-	
-	/**
-	 * <p>Returns true if the passed value is empty.</p>
-	 * <p>The value is deemed to be empty if it is<div class="mdetail-params"><ul>
-	 * <li>null</li>
-	 * <li>undefined</li>
-	 * <li>an empty array</li>
-	 * <li>a zero length string (Unless the <tt>allowBlank</tt> parameter is <tt>true</tt>)</li>
-	 * </ul></div>
-	 * @param {Mixed} value The value to test
-	 * @param {Boolean} allowBlank (optional) true to allow empty strings (defaults to false)
-	 * @return {Boolean}
-	 */
-	function isEmpty(v, allowBlank){
-		return v === null || v === undefined || ((isArray(v) && !v.length)) || (!allowBlank ? v === '' : false);
-	}
-
-	/**
-	 * Iterates an array calling the supplied function.
-	 * @param {Array/NodeList/Mixed} array The array to be iterated. If this
-	 * argument is not really an array, the supplied function is called once.
-	 * @param {Function} fn The function to be called with each item. If the
-	 * supplied function returns false, iteration stops and this method returns
-	 * the current <code>index</code>. This function is called with
-	 * the following arguments:
-	 * <div class="mdetail-params"><ul>
-	 * <li><code>item</code> : <i>Mixed</i>
-	 * <div class="sub-desc">The item at the current <code>index</code>
-	 * in the passed <code>array</code></div></li>
-	 * <li><code>index</code> : <i>Number</i>
-	 * <div class="sub-desc">The current index within the array</div></li>
-	 * <li><code>allItems</code> : <i>Array</i>
-	 * <div class="sub-desc">The <code>array</code> passed as the first
-	 * argument to <code>Ext.each</code>.</div></li>
-	 * </ul></div>
-	 * @param {Object} scope The scope (<code>this</code> reference) in which the specified function is executed.
-	 * Defaults to the <code>item</code> at the current <code>index</code>
-	 * within the passed <code>array</code>.
-	 * @return See description for the fn parameter.
-	 */
-	function each(array, fn, scope) {
-		if (isEmpty(array, true)) {
-			return;
-		}
-		for (var i = 0, len = array.length; i < len; i++) {
-			if (fn.call(scope || array[i], array[i], i, array) === false) {
-				return i;
-			};
-		}
-	}
-
-	/**
-	 * Iterates either the elements in an array, or each of the properties in an object.
-	 * <b>Note</b>: If you are only iterating arrays, it is better to call {@link #each}.
-	 * @param {Object/Array} object The object or array to be iterated
-	 * @param {Function} fn The function to be called for each iteration.
-	 * The iteration will stop if the supplied function returns false, or
-	 * all array elements / object properties have been covered. The signature
-	 * varies depending on the type of object being interated:
-	 * <div class="mdetail-params"><ul>
-	 * <li>Arrays : <tt>(Object item, Number index, Array allItems)</tt>
-	 * <div class="sub-desc">
-	 * When iterating an array, the supplied function is called with each item.</div></li>
-	 * <li>Objects : <tt>(String key, Object value, Object)</tt>
-	 * <div class="sub-desc">
-	 * When iterating an object, the supplied function is called with each key-value pair in
-	 * the object, and the iterated object</div></li>
-	 * </ul></div>
-	 * @param {Object} scope The scope (<code>this</code> reference) in which the specified function is executed. Defaults to
-	 * the <code>object</code> being iterated.
-	 */
-	function iterate(obj, fn, scope) {
-		if (isEmpty(obj)) {
-			return;
-		}
-		if (isArray(obj) || obj.callee) {
-			each(obj, fn, scope);
-			return;
-		} else if (typeof obj == 'object') {
-			for (var prop in obj) {
-				if (obj.hasOwnProperty(prop)) {
-					if (fn.call(scope || obj, prop, obj[prop], obj) === false) {
-						return;
-					};
-				}
-			}
-		}
-	}
-	
 	/**
 	 * Simple function to mix in properties from source into target,
 	 * but only if target does not already have a property of the same name.
@@ -164,57 +77,11 @@
 		}
 	}
 
-	/**
-	 * Cut the first term from a / delimited string
-	 * @param {string} uri The path string to cut the first term off.
-	 * @return {string} Path without first term
-	 */
-	function cutFirstTerm(uri) {
-		uri = uri.split('/');
-		uri = uri.slice(1, uri.length);
-		return uri.join("/"); 
-	}
-	
-	/**
-	 * Get the first term from a / delimited string and return it
-	 * @param {string} uri The path string to cut the first term off.
-	 * @return {string} First term
-	 */
-	function getFirstTerm(uri) {
-		uri = uri.split('/');
-		uri = uri.slice(0);
-		return uri[0];
-	}
-	
-	/**
-	 * Cut the last term from a URI string
-	 * @param {string} uri The path string to cut the last term off.
-	 * @return {string} Path without last term
-	 */
-	function cutLastTerm(uri) {
-		uri = uri.split('/');
-		uri = uri.slice(0, uri.length-1);
-		return uri.join("/"); 
-	}
-	
-	/**
-	 * Get the last term from a URI string and return it
-	 * @param {string} uri The path string to cut the last term off.
-	 * @return {string} Last term
-	 */
-	function getLastTerm(uri) {
-		uri = uri.split('/');
-		uri = uri.slice(uri.length-1);
-		return uri[0];
-	}
-	
 	/********************************************************************************************
 	* Core Module System implemented as Singleton												*
 	********************************************************************************************/
-
 	CMS = function(){
-		var modules = {},						// The modules store
-			mappings = {};						// The mappings store
+		var modules = {};						// The modules store
 			
 		/*******************************************************************************\
 		*	modules store functions														*
@@ -250,55 +117,6 @@
 		}
 		
 		/*******************************************************************************\
-		*	mappings store functions													*
-		\*******************************************************************************/	
-		/**
-		 * Get the requested mapping URI
-		 * @param {string} id Id of the mapping URI to return.
-		 * @return {URI} Requested mapping URI or undef if not there
-		 */
-		function getMapping(id) {
-			// prepend with constant to circumvent standard Object properties
-			if ((id.length>0) && (id.charAt(id.length-1) !== '/')) id = id + '/';
-			return mappings[objEscStr + id];
-		}
-		
-		/**
-		 * Set the requested mapping in the mapping list
-		 * @param {string} id Id of the mapping to save.
-		 * @param {URI} value The URI value.
-		 * @return {URI} The set URI value
-		 */
-		function setMapping(id, value) {
-			// prepend with constant to circumvent standard Object properties
-			if ((id.length>0) && (id.charAt(id.length-1) !== '/')) id = id + '/';
-			return mappings[objEscStr + id] = value;
-		}
-		
-		/**
-		 * Resolve from an id the root URI via mappings tree. Recursive function!! 
-		 * @param {string} id Canonicalized id 
-		 * @return object Object with URI and cut back id
-		 */	
-		function getURIid(id, mapped) {
-			// initialize recursion..
-			if (!mapped) mapped='';
-			
-			// look if next added term is a mapping
-			if (getMapping(mapped + getFirstTerm(id) + '/')) {
-				mapped = mapped + getFirstTerm(id) + '/';
-				id = cutFirstTerm(id);
-				return getURIid(id, mapped);
-			}
-			
-			// return the result 
-			return {
-				URI: getMapping(mapped) + id,
-				id: id
-			};
-		}
-		
-		/*******************************************************************************\
 		*	CMS API functions															*
 		\*******************************************************************************/	
 		return {
@@ -308,8 +126,7 @@
 			api: function(){
 				return {
 					cms: CMS,
-					modules: modules,
-					mappings: mappings
+					modules: modules
 				}
 			},
 			
@@ -318,32 +135,30 @@
 			 * @param {string} id The canonicalized id of the module exports to return.
 			 * @return {exports} Requested module exports or undef if not there
 			 */
-			requireModule: function(id) {
+			requireModule: function(rootURI, id) {
 			},
 			
 			/**
 			 * create a module in the modules list
-			 * @param {string} id The fully canonicalized id of the module.
-			 * @param {array} deps Array of fully canonicalized dependency id's.
+			 * @param {string} rootURI The URI of the module system root.
+			 * @param {string} id The fully top level id of the module in the module system.
+			 * @param {array} deps Array of fully top level dependency id's in the module system.
 			 * @param {function} factoryFn The factory function of the module.
-			 * @return {bool} True if ok, false if failure
+			 * @param {string} URL The URL (module location) of the module.
+			 * @return {bool} True if ok, false if module already exists
 			 */
-			memoize: function(id, deps, factoryFn) {
-				// replace mapping part with the root uri and module id
-				var URIid = getURIid(id).URI;
-				
-				// if not possible to create reference return false
-				if (!URIid) return false;
+			memoize: function(rootURI, id, deps, factoryFn, URL) {
+				// create module identifier
+				var modId = rootURI + id;
 				
 				// create Module Instance and save in module store if not already exists
-				if (!existModule(URIid)) setModule(URIid, new Module(id, deps, factoryFn, URIid));
+				if (!existModule(modId)) {
+					setModule(modId, new Module(rootURI, id, deps, factoryFn, URL));
+					return true;
+				}
 				
-				// all ok
-				return true;
-			},
-			
-			addMapping: function(id, URI){
-				setMapping(id, URI);
+				// Module already exists
+				return false;
 			},
 			
 			/**
@@ -351,7 +166,7 @@
 			 * @param {array] deps Modules that need to be INIT state before cb is called
 			 * @param {function} cb Callback function called when all deps are in INIT state
 			 */
-			ensure: function(deps, cb){
+			ensure: function(rootURI, deps, cb){
 				// check which deps are alrady in INIT or READY state
 				
 				// get the not available dep modules and give the callback function
@@ -364,24 +179,22 @@
 			getMain: function(id){
 				return { empty: 'need to filled with exports of main module'}
 			}
-			
-			
 		}
 	}()
 
 	/********************************************************************************************
 	* Generic Module System implemented as Module Class											*
 	********************************************************************************************/
-
 	/**
 	 * Module class definition
 	 * @param {string} id The global id of this Module
 	 */
-	function Module(id, deps, factoryFn, uri) {
+	function Module(rootURI, id, deps, factoryFn, URL) {
+		this.rootURI = rootURI;														// The root Identifier URI
 		this.id = id;																// The fully resolved id of this module in this package
 		this.deps = deps;															// The module dependencies (full canonilized id's)
 		this.factoryFn = factoryFn;													// Factory Function
-		this.uri = uri;																// location of this module
+		this.URL = URL;																// location of this module
 		this.exports = {};															// The exports object for this module
 		this.module = null;															// The module variable for the factory function
 		
@@ -394,11 +207,20 @@
 		 * @param {string} id
 		 */
 		require: function(id) {
-			// normalize id if not empty
-			id = (id === '') ? id : this.resolveId(id);
+			var rootURI = this.rootURI;
+			
+			// if rootURIDelimiter in id then dont need to resolve
+			if (id.indexOf(rootURIDelimiter) === -1) {
+				// normalize id if not empty
+				id = (id === '') ? id : this.resolveId(id);
+			} else {
+				// split rootURI from id
+				rootURI = id.substring(0, id.indexOf(rootURIDelimiter));
+				id = id.substring(id.indexOf(rootURIDelimiter)+1);
+			}
 			
 			// get requested module
-			var mod = CMS.requireModule(id);
+			var mod = CMS.requireModule(rootURI, id);
 			if (!mod) {
 				// module doesn't exist so throw error
 				throw "Module: " + id + " doesn't exist!!";
@@ -428,7 +250,7 @@
 			};
 			
 			// Call Core Module System to load the requested modules and if ready call the callback function
-			CMS.ensure(ldeps, cb)
+			CMS.ensure(this.rootURI, ldeps, cb)
 			
 			// return undefined at this moment, standard is not clear about this.
 			return UNDEF;
@@ -489,27 +311,14 @@
 			if (!this.module) {
 				// else fill new module
 				this.module = {
-					id: this.id,
-					uri: this.uri
+					id: this.rootURI + rootURIDelimiter + this.id,
+					url: this.URL
 				}
 			}
 			return this.module;
 		}
 	};
 	
-	/********************************************************************************************
-	* Environment Initialization																*
-	********************************************************************************************/
-
-    /**
-	 * Check for an existing version of a module object. If that does not exists then define
-	 * a new 'global' module object. After that use the module object to set my own init function.  
-	 */
-	if (!global.module) {
-		global.module = {
-			api: CMS.api()
-		};
-	} else global.module.api = CMS.api();
-	
-}).call(typeof window === 'undefined' ? this : window); // take care that 'this' is 'window' and else the current 'this' scope...
-
+	// return the Core Module Layer API
+	return CMS.api();
+}();
