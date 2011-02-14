@@ -40,23 +40,21 @@
  */
  
 /**
- * Core Module Layer API definition
+ * Core Module Layer definition
  */
 // Check for an existing version of a module object. If that does not exists then define a new module reference.
-if (typeof this.window == "undefined" || ""+this.window == "undefined") {
-	// We are running on a server 
-	// todo: define module in server environment
-} else {
-	// We are most likely running in a browser
-	if (!window.module) window.module = {};
-}
+var module;
+if (typeof module === "undefined")
+	module = {};
+
+// create the api namespace if not already available
+if (typeof module.api === "undefined")
+	module.api = {};
 
 // define the Core Module Layer API
-module.api = function(){
+module.api.cms = function(){
 	var UNDEF,													// undefined constant for comparison functions
 		objEscStr = '_',										// Object property escape string
-		CMS,													// The Core Module System
-		rootURIDelimiter = '#',									// The system root module id delimiter
 		
 		//The following are module state constants
 		INIT = 'INIT',
@@ -76,13 +74,15 @@ module.api = function(){
 			}
 		}
 	}
-
+	
 	/********************************************************************************************
-	* Core Module System implemented as Singleton												*
+	* Core Module System Module Store implemented as Class										*
 	********************************************************************************************/
-	CMS = function(){
-		var modules = {};						// The modules store
-			
+	function Store() {
+		this.modules = {};								// initialize module store
+	}
+	
+	Store.prototype = {
 		/*******************************************************************************\
 		*	modules store functions														*
 		\*******************************************************************************/	
@@ -91,10 +91,10 @@ module.api = function(){
 		 * @param {string} id The fully resolved id of the module to return.
 		 * @return {Module} Requested module or undef if not there
 		 */
-		function getModule(id) {
+		getModule: function(id) {
 			// prepend with constant to circumvent standard Object properties
-			return modules[objEscStr + id];
-		}
+			return this.modules[objEscStr + id];
+		},
 		
 		/**
 		 * Set the requested module in the modules list
@@ -102,85 +102,130 @@ module.api = function(){
 		 * @param {Module} value The module.
 		 * @return {Module} The set module
 		 */
-		function setModule(id, value) {
+		setModule: function(id, value) {
 			// prepend with constant to circumvent standard Object properties
-			return modules[objEscStr + id] = value;
-		}
+			return this.modules[objEscStr + id] = value;
+		},
 		
 		/**
 		 * Check if the requested module already exists in the modules list
 		 * @param {string} id The fully resolved id of the module to save.
 		 * @return {bool} True when module exists, false if not
 		 */
-		function existModule(id) {
-			return (modules[objEscStr + id] !== UNDEF);
+		existModule: function(id) {
+			return (this.modules[objEscStr + id] !== UNDEF);
 		}
-		
+	}
+	
+	/********************************************************************************************
+	* Core Module System implemented as Class													*
+	********************************************************************************************/
+	/**
+	 * CMS class definition
+	 * @param {object} api Reference to the CommonJS API namespace to use for this Core Module System.
+	 */
+	function CMS(api) {
+		this.api = api;
+		this.store = new Store();
+	}
+
+	CMS.prototype = {
 		/*******************************************************************************\
 		*	CMS API functions															*
 		\*******************************************************************************/	
-		return {
-			/**
-			 * Return the public API of the Core Module System
-			 */
-			api: function(){
-				return {
-					cms: CMS,
-					modules: modules
-				}
-			},
+		/**
+		 * Return a new instance of the Core Module System
+		 * @param {object} api Reference to the CommonJS API namespace to use for this Core Module System.
+		 */
+		newCMS: function(api) {
+			return new CMS(api);
+		},
+
+		/**
+		 * Get the requested module
+		 * @param {string} id The full top level id of the module exports to return.
+		 * @return {exports} Requested module exports or undef if not there
+		 */
+		require: function(id) {
+			var mod;
 			
-			/**
-			 * Get the requested module
-			 * @param {string} id The canonicalized id of the module exports to return.
-			 * @return {exports} Requested module exports or undef if not there
-			 */
-			requireModule: function(rootURI, id) {
-			},
+			// exists this module in this system?
+			if (mod = this.store.getModule(id)) {
+				return mod.createModule();
+			} 
 			
-			/**
-			 * create a module in the modules list
-			 * @param {string} rootURI The URI of the module system root.
-			 * @param {string} id The fully top level id of the module in the module system.
-			 * @param {array} deps Array of fully top level dependency id's in the module system.
-			 * @param {function} factoryFn The factory function of the module.
-			 * @param {string} URL The URL (module location) of the module.
-			 * @return {bool} True if ok, false if module already exists
-			 */
-			memoize: function(rootURI, id, deps, factoryFn, URL) {
-				// create module identifier
-				var modId = rootURI + id;
-				
-				// create Module Instance and save in module store if not already exists
-				if (!existModule(modId)) {
-					setModule(modId, new Module(rootURI, id, deps, factoryFn, URL));
-					return true;
-				}
-				
-				// Module already exists
-				return false;
-			},
+			// call higher layer require because maybe in another system ??
+			return this.requireHook(id);
+		},
+		
+		/**
+		 * API hook for for higher layers to return the requested module
+		 * @param {string} id The full top level id of the module exports to return.
+		 * @return {exports} Requested module exports or undef if not there
+		 */
+		requireHook: function(id){
+			// empty hook so nothing to give back
+			return UNDEF;
+		},
 			
-			/**
-			 * ensure function
-			 * @param {array] deps Modules that need to be INIT state before cb is called
-			 * @param {function} cb Callback function called when all deps are in INIT state
-			 */
-			ensure: function(rootURI, deps, cb){
-				// check which deps are alrady in INIT or READY state
-				
-				// get the not available dep modules and give the callback function
-			},
-			
-			/**
-			 * return the exports of the main module of the root system
-			 * @param {string} id The canonicalized id of the module who wants to know its main  
-			 */
-			getMain: function(id){
-				return { empty: 'need to filled with exports of main module'}
+		/**
+		 * create a module in the modules list
+		 * @param {string} id The full top level id of the module in the module system.
+		 * @param {array} deps Array of fully top level dependency id's in the module system.
+		 * @param {function} factoryFn The factory function of the module.
+		 * @return {bool} True if ok, false if module already exists
+		 */
+		memoize: function(id, deps, factoryFn) {
+			// create Module Instance and save in module store if not already exists
+			if (!this.store.existModule(id)) {
+				this.store.setModule(id, new Module(id, deps, factoryFn, this));
+				return true;
 			}
+			
+			// Module already exists
+			return false;
+		},
+		
+		/**
+		 * provide function
+		 * @param {array] deps The full top level module id's that need to be INIT state before cb is called
+		 * @param {function} cb Callback function called when all deps are in INIT state
+		 */
+		provide: function(deps, cb){
+			// check which deps are already in INIT or READY state
+			
+			// get the not available dep modules and give the callback function
+			this.provideHook(deps, cb);
+		},
+		
+		/**
+		 * API hook for for higher layers to provide not available modules in this system
+		 * @param {array] deps The full top level module id's that need to be INIT state before cb is called
+		 * @param {function} cb Callback function called when all given deps are in INIT state
+		 */
+		provideHook: function(deps, cb){
+		},
+		
+		/**
+		 * return the exports of the main module of the root system
+		 * @param {string} id The full top level id of the module who wants to know its context main module exports
+		 * @return {exports} The exports of the context main module 
+		 */
+		getMainHook: function(id){
+			// if not overwritten then the module with id=='' is the main module, so get its exports
+			return this.require('');
+		},
+
+		/**
+		 * return a Context wide canonical module id
+		 * @param {string} id The full top level id for which the Context wide canonical id is requested   
+		 * @return {string} The Context wide canonical id version of the given id
+		 */
+		idHook: function(id){
+			// if not overwritten this system IS the context so just return this given full top level id
+			return id;
 		}
-	}()
+	}
 
 	/********************************************************************************************
 	* Generic Module System implemented as Module Class											*
@@ -189,12 +234,12 @@ module.api = function(){
 	 * Module class definition
 	 * @param {string} id The global id of this Module
 	 */
-	function Module(rootURI, id, deps, factoryFn, URL) {
-		this.rootURI = rootURI;														// The root Identifier URI
-		this.id = id;																// The fully resolved id of this module in this package
-		this.deps = deps;															// The module dependencies (full canonilized id's)
+	function Module(id, deps, factoryFn, cms) {
+		this.id = id;																// The full top level id of this module in this system
+		this.deps = deps;															// The module dependencies (The full top level id's)
 		this.factoryFn = factoryFn;													// Factory Function
-		this.URL = URL;																// location of this module
+		this.cms = cms;																// The core module system this module is defined in
+		
 		this.exports = {};															// The exports object for this module
 		this.module = null;															// The module variable for the factory function
 		
@@ -207,30 +252,18 @@ module.api = function(){
 		 * @param {string} id
 		 */
 		require: function(id) {
-			var rootURI = this.rootURI;
+			// resolve id to current environment
+			id = (id === '') ? id : this.resolveId(id);
 			
-			// if rootURIDelimiter in id then dont need to resolve
-			if (id.indexOf(rootURIDelimiter) === -1) {
-				// normalize id if not empty
-				id = (id === '') ? id : this.resolveId(id);
-			} else {
-				// split rootURI from id
-				rootURI = id.substring(0, id.indexOf(rootURIDelimiter));
-				id = id.substring(id.indexOf(rootURIDelimiter)+1);
-			}
-			
-			// get requested module
-			var mod = CMS.requireModule(rootURI, id);
-			if (!mod) {
+			// get requested module exports
+			var exports = this.cms.require(id);
+			if (!exports) {
 				// module doesn't exist so throw error
 				throw "Module: " + id + " doesn't exist!!";
-			} else if (!mod.createModule()) {
-				// module exists but can't be initialized
-				throw "Module: " + id + " can't be initialized!!";
-			}		
+			} 
 			
 			// just a normal require call and return exports of requested module 
-			return mod.exports;
+			return exports;
 		},
 		
 		/**
@@ -250,23 +283,48 @@ module.api = function(){
 			};
 			
 			// Call Core Module System to load the requested modules and if ready call the callback function
-			CMS.ensure(this.rootURI, ldeps, cb)
+			this.cms.provide(ldeps, cb)
 			
 			// return undefined at this moment, standard is not clear about this.
 			return UNDEF;
 		},
 		
 		/**
-		 * Resolve the given relative id to the current id or if not relative only sanatize it
+		 * Resolve the given relative id to the current id or if not relative just give it back
 		 * @param {string} id The id to resolve
 		 * @return {string} resolved and sanatized id.
 		 */
 		resolveId: function(id) {
+			if (id.charAt(0) === '.') {
+				// if relative start then resolve...
+				id = this.id + '/' + id;
+				var oldId = id.split('/');
+				var newId = [];
+				var i;
+
+				if (id.charAt(id.length - 1) === '/')
+					oldId.push("INDEX");
+
+				for (i = 0; i < oldId.length; i++) {
+					if (oldId[i] == '.' || !oldId[i].length)
+						continue;
+					if (oldId[i] == '..') {
+						if (!newId.length)
+							throw new Error("Invalid module path: " + path);
+						newId.pop();
+						continue;
+					}
+					newId.push(oldId[i]);
+				}
+//				newId.unshift('');
+				id = newId.join('/');
+			}
+			return id;
 		},
 		
 		/**
 		 * Initialize Module.exports by calling creatorFn
-		 * @return {Module} The ready module, null if factory call not possibele yet
+		 * @return {exports} The exports of the ready module, null if factory call not possibele
 		 */
 		createModule: function() {
 			if (this.state === INIT) {
@@ -274,12 +332,12 @@ module.api = function(){
 				// need reference to exports
 				// need reference to module object with id and uri of this module
 				// do mixin of result and this.exports
-				this.setState(READY);		// set to true before initialization call because module can request itself.. (circular dep problems) 
+				this.state = READY;	// set to true before initialization call because module can request itself.. (circular dep problems) 
 				mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
 			}
 			
-			// if READY then return this module else return null 
-			return (this.state === READY) ? this : null;
+			// if READY then return this module exports else return null 
+			return (this.state === READY) ? this.exports : null;
 		},
 		
 		/**
@@ -296,9 +354,7 @@ module.api = function(){
 			reqFunction.ensure = function(){
 				return that.ensure.apply(that, arguments);
 			};
-			
-			// add a reference to the main module for this id
-			reqFunction.main = CMS.getMain(that.id);
+			// return created require function
 			return reqFunction;
 		},
 	
@@ -311,14 +367,14 @@ module.api = function(){
 			if (!this.module) {
 				// else fill new module
 				this.module = {
-					id: this.rootURI + rootURIDelimiter + this.id,
-					url: this.URL
+					id: this.cms.idHook(this.id),
 				}
 			}
+			// return the module
 			return this.module;
 		}
-	};
+	}
 	
-	// return the Core Module Layer API
-	return CMS.api();
+	// return the Core Module System API
+	return new CMS(module.api);
 }();

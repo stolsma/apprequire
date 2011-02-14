@@ -7,7 +7,7 @@
             "target": "apprequire.js",
             "debug": true,
             "files" : [
-                {"path": "src/",      "name": "apprequire.js"}
+                {"path": "src/",      "name": "coreModuleLayer.js"}
             ]
 		}
     ]
