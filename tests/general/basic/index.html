@@ -39,74 +39,65 @@
 	// standard module environment testing \\
 			
 	// add main module in main environment
-	module.api.cms.memoize('', ['dep1', 'dep2'], function(require, exports, module){
+	require.memoize('', ['dep1', 'dep2'], function(require, exports, module){
 		exports.test = 'Main Module';
 		exports.dummy4 = require('dummy4');
 		exports.dummy3 = require('./dummy3');
 	});
 	// add module in main environment
-	module.api.cms.memoize('dummy4', ['dep1', 'dep2'], function(require, exports, module){
+	require.memoize('dummy4', ['dep1', 'dep2'], function(require, exports, module){
 		exports.test = 'Dummy4';
 		exports.dummy3 = require('../dummy3');		
 	});
 	// add module in main environment
-	module.api.cms.memoize('dummy3', ['dep1', 'dep2'], function(require, exports, module){
+	require.memoize('dummy3', ['dep1', 'dep2'], function(require, exports, module){
 		exports.test = 'Dummy3';
 	});
 	
 	/*******************************************************************************\
-	*	First test: add module with same root = exception!!							*
+	*	First test: add module with same id = fail									*
 	\*******************************************************************************/
-	if (module.api.cms.memoize('dummy3', ['dep3', 'dep4'], function(require, exports, module){
+	if (require.memoize('dummy3', ['dep3', 'dep4'], function(require, exports, module){
 		exports.test = 'Dummy3 tweede keer';
 	})) {
-		printResults('2nd time memoizing same module id works, as not expected..', 'fail')
+		printResults('2nd time memoizing same module id works, not expected..', 'fail')
 	} else {
-		printResults('2nd time memoizing same module id doesnt work, as expected..', 'pass')
+		printResults('2nd time memoizing same module id fails, as expected..', 'pass')
 	};
 
 	/*******************************************************************************\
 	*	2nd test: is exports correct after require									*
 	\*******************************************************************************/
-	if (module.api.cms.require('').test == 'Main Module') {
+	if (require('').test == 'Main Module') {
 		printResults('Requireing main module gives Main Module in exports..', 'pass')
 	} else {
 		printResults('Requireing main module doesnt gives Main Module in exports..', 'fail')
 	};
-	if (module.api.cms.require('dummy4').test == 'Dummy4') {
+	if (require('dummy4').test == 'Dummy4') {
 		printResults('Requireing dummy4 gives Dummy4 in exports..', 'pass')
 	} else {
 		printResults('Requireing dummy4 doesnt gives Dummy4 in exports..', 'fail')
 	};
-	if (module.api.cms.require('dummy3').test == 'Dummy3') {
+	if (require('dummy3').test == 'Dummy3') {
 		printResults('Requireing dummy3 gives Dummy3 in exports..', 'pass')
 	} else {
 		printResults('Requireing dummy3 doesnt gives Dummy3 in exports..', 'fail')
 	};
 		
 	/*******************************************************************************\
-	*	3rd test: is getMainHook working											*
+	*	3rd test: is require in module working										*
 	\*******************************************************************************/
-	if (module.api.cms.getMainHook('').test == 'Main Module') {
-		printResults('getMainHook gives Main Module in exports..', 'pass')
-	} else {
-		printResults('getMainHook doesnt gives Main Module in exports..', 'fail')
-	};
-	
-	/*******************************************************************************\
-	*	4th test: is require in module working										*
-	\*******************************************************************************/
-	if (module.api.cms.require('').dummy4.test == 'Dummy4') {
+	if (require('').dummy4.test == 'Dummy4') {
 		printResults('Is require in module working..', 'pass')
 	} else {
 		printResults('Require in module is not working..', 'fail')
 	};
-	if (module.api.cms.require('').dummy3.test == 'Dummy3') {
+	if (require('').dummy3.test == 'Dummy3') {
 		printResults('Is relative require with one dot in module working..', 'pass')
 	} else {
 		printResults('Relative Require with one dot in module is not working..', 'fail')
 	};
-	if (module.api.cms.require('dummy4').dummy3.test == 'Dummy3') {
+	if (require('dummy4').dummy3.test == 'Dummy3') {
 		printResults('Is relative require with two dots in module working..', 'pass')
 	} else {
 		printResults('Relative Require with two dots in module is not working..', 'fail')
