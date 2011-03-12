@@ -42,21 +42,40 @@
 /**
  * Bootstrap System definition
  */
-// define require and exports
-var require, exports;
+// define require, exports, module and window
+var require, exports, module;
 // Check for an existing version of an exports object. If that does not exists then define a new exports reference.
 if (typeof exports === "undefined")
 	exports = {};
 
-// create the api namespace if not already available
-if (typeof exports.api === "undefined")
-	exports.api = {};
-
 // define the Bootstrap System API
-exports.api.boot = function(window, commonjs){
+exports.boot = function(){
 	var UNDEF,													// undefined constant for comparison functions
-		API = { test: 'test'};
-	
+		contextList = [],
+		
+		// default context config
+		defaultcfg = {
+			directories: {
+				lib: './lib'
+			},
+			commonjsAPI: {},
+			modules: {},
+			debug: true,
+			waitSeconds: 6000,
+			baseUrlMatch: /apprequire\.js/i
+		},
+					
+		// default commonjs API:
+		commonjsAPI = {
+			cml: "coreModuleLayer",
+			context: "genericContext",
+			package: "genericPackage",
+			loader: "genericLoader",
+		},
+		
+		// CommonJS Context ID Type
+		CJS_TYPE_Context = 'context';
+		
 	/********************************************************************************************
 	* Utility functions																			*
 	********************************************************************************************/
@@ -98,122 +117,169 @@ exports.api.boot = function(window, commonjs){
 	}
 	
 	/********************************************************************************************
-	* Bootstrap functions																		*
+	* Specific CommonJS environment Bootstrap code												*
 	********************************************************************************************/
-	function getSystemInfo(document, baseUrlMatch){
-		var scriptList,	script,	src, i, main,
-			result = {main: '', location: ''};
+	function bootCommonJS(contextCfg){
+	}
+	
+	/********************************************************************************************
+	* Specific Browser Bootstrap code															*
+	********************************************************************************************/
+	/**
+	 * Get specific first context configuration from the script element
+	 * @param {document} document Reference to window.document in a browser environment.
+	 * @param {string} baseUrlMatch RegExp definition to find this scriptfile.
+	 * @return {object} Object with defined context configuration parsed from the scripts context attribute
+	 */
+	function getContextConfig(document, baseUrlMatch){
+		var scriptList,	script,	src, i, result;
 
 		// Get list of all <script> tags to check
 		scriptList = document.getElementsByTagName("script");
-		//Figure out if there is a 'data-main' attribute value. Get it from the script tag with cfg.baseUrlMatch as regexp.
+		//Figure out if there is a 'context' attribute value. Get it from the script tag with cfg.baseUrlMatch as regexp.
 		for (i = scriptList.length - 1; i > -1 && (script = scriptList[i]); i--) {
 			//Using .src instead of getAttribute to get an absolute URL.
 			src = script.src;
 			if (src) {
 				if (src.match(baseUrlMatch)) {
-					//Look for a data-main attribute to set main script for the page to load.
-					main = script.getAttribute('data-main');
+					//Look for a context attribute to configure the first context.
+					result = script.getAttribute('context');
 					break;
 				}
 			}
 		}
-		if (main){
-			if (main.charAt(main.length) === '/') {
-				result.location = main;
-			} else {
-				result.location = cutLastTerm(main);
-				result.main = getLastTerm(main);
-			}
+		
+		// parse result if there is a result
+		if (result){
+			if (JSON)
+				// Standaard JSON functions available? then use them
+				result = JSON.parse(result);
+			else
+				// no JSON functions available then use RFC recommended eval
+				result = !(/[^,:{}\[\]0-9.\-+Eaeflnr-u \n\r\t]/.test(result.replace(/"(\\.|[^"\\])*"/g, ''))) && eval('(' + result + ')');
 		}
 		return result;
 	}
 
-	function setupConfig(api) {
-		var	defaultcfg = {
-				mainFunction: null,
-				deps: [],
-				directories: {
-					lib: './lib'
-				},
-				debug: true,
-				waitSeconds: 6000,
-				baseUrlMatch: /apprequire\.js/i
-			},
-			cfg = {};
+	/**
+	 * Checks if all the required CommonJS system API modules are loaded
+	 * @param {object} api Object with the config.commonjsAPI information.
+	 * @param {object} modules Object with the loaded CommonJS System modules.
+	 * @return {bool} True when all required modules are loaded false if not
+	 */
+	function bootstrapReady(api, modules){
+		for (var prop in api) {
+			if (!(api[prop] in modules)) {
+				// nope this system modules is not declared yet 
+				return false;
+			}
+		}
+		// all required system modules are loaded
+		return true;
+	}
+
+	/**
+	 * Handles CommonJS system API module adding to the environment, only available in bootstrap phase.
+	 * Bootstrap phase is followed by Extra Module Environment Phase (EME Phase). Changeover to EME phase is 
+	 * accomplished when all modules defined in CommonjsAPI are 'loaded' via module.declare   
+	 * @param {array} dep Object with the modules dependency list.
+	 * @param {function} factoryFn Function to define the exports of this module.
+	 * @param {object} contextCfg Object with the configuration for the context to create.
+	 */
+	function addModule(dep, factoryFn, contextCfg){
+		var exports = {},
+			modules = contextCfg.modules,
+			commonjsAPI = contextCfg.commonjsAPI,
+			api, context;
 		
-		// get given cfg if it exists
-		if (api.cfg !== UNDEF)
-			mixin(cfg, api.cfg);
+		// Execute factory function to get commonjs api information
+		mixin(exports, factoryFn.call(null, null, exports, null));
+		
+		if (exports.commonjs !== UNDEF) {
+		// exports comes back with commonjs api information
+			api = exports.commonjs;
+			if (api.type && api.create){
+				// save this api information
+				modules[api.type] = api.create;
+				// check if all modules are now loaded. If true then startup first context
+				if (bootstrapReady(commonjsAPI, modules)){
+					// delete declare because only in use for bootstrap...
+					delete contextCfg.env.module.declare;
+					// if context API exists then create context with current cfg, and the System Module list. If something goes wrong then throw error
+					if (!modules[commonjsAPI[CJS_TYPE_Context]] || !(context = modules[commonjsAPI[CJS_TYPE_Context]](contextCfg))) throw new Error("No correct CommonJS Module API declaration!!");
+					// save context for later use ??
+					contextList.push(context)
+				}
+			}
+		} else {
+		// non CommonJS system API module is declared, throw error
+			throw new Error("Invalid bootstrap module declaration!!");
+		}
+	}
+	
+	function bootExtraModuleEnvironment(contextCfg){
+		contextCfg.env.module = {
+			declare: function(deb, factoryFn){
+				addModule(deb, factoryFn, contextCfg);
+			}
+		};
+	}
+	
+	/********************************************************************************************
+	* First boot code																			*
+	********************************************************************************************/
+	
+	function setupConfig(env, cfg){
+		// check if environment is defined else throw
+		if (env === UNDEF) 
+			throw new Error("Invalid environment in setupConfig bootstrap! ");
+			
 		// mix defaultcfg with cfg
 		mixin(cfg, defaultcfg);
-		// put result back
-		api.cfg = cfg;
 				
-		// check if window is defined else throw
-		if (window === UNDEF) 
-			throw new Error("Invalid environment in bootstrap! ");
-			
-		// then get possible script attribute configuration option for main and location
-		if (window.document !== UNDEF) 
-			mixin(cfg, getSystemInfo(window.document, cfg.baseUrlMatch));
-		else // set default empty values for main and location
-			mixin(cfg, {
-				main: '',
-				location: ''
-			});
-	
-		// cfg has preference over datamain over location.href
-		if (cfg.location == '')
-			cfg.location = cutLastTerm(window.location.href);
+		// then get possible script attribute configuration option if in browser env
+		if (env.document !== UNDEF) 
+			mixin(cfg, getContextConfig(env.document, cfg.baseUrlMatch));
 		
-		// give debug environment
-		if (api.debug === UNDEF) 
-			api.debug = {};
-			
+		// create location propertie if not already defined	
+		mixin(cfg, {
+			location: ''
+		});
+	
+		// previous configuration has preference over environment location.href
+		if (cfg.location == '')
+			cfg.location = cutLastTerm(env.location.href);
+		
+		// mixin not defined framework standard CommonJS Framework Systems
+		mixin(cfg.commonjsAPI, commonjsAPI);
+		
 		// and return config
 		return cfg;
 	}
 	
-	function startupCMS(api){
-		// give cms instance
-		var cms = api.debug.cms = api.cms({}, api.cfg.debug);
+	/**
+	 * Boot the whole commonjs environment depending on the environment. 
+	 * @param {object} env Description of the current environment
+	 * @param {bool} commonjs True if the current host environment already as some sort of commonjs module environment implemented
+	 * @return {?} The information returned by the specific environment boot procedure
+	 */
+	function boot(env, commonjs){
+		// get the context config
+		var contextCfg = setupConfig(env, {env: env});
 		
-		// create extra module environment require
-		window.require = cms.require;
-		window.require.memoize = cms.memoize;
-		window.require.isMemoized = cms.isMemoized;
-	}
-	
-	function boot(api, commonjs){
-		// make the config
-		setupConfig(api);
-		
-		// first see if a context system is available, if so start it with giving it the api
-		if (api.context !== UNDEF) {
-			// startup with context, package and module system
-		} else if (api.package !== UNDEF) {
-			// startup with package and module system
-		} else if (api.cms !== UNDEF) {
-			// startup with module system only
-			startupCMS(api);
-		} else 
-			throw new Error("BOOT: No main CommonJS layer (context, package or core module) defined in the API to start with!");
-			
-		// return myself for later use
-		return boot;
+		// select flow of bootstrap on commonjs env
+		if (commonjs) 
+			return bootCommonJS(contextCfg);
+		else
+			return bootExtraModuleEnvironment(contextCfg);
 	}
 	
 	/********************************************************************************************
-	* Bootstrap code																			*
+	* Bootstrap API definition																	*
 	********************************************************************************************/
-	// TODO
-	// Build exports.api with all modules when in commonjs environment
-	
-	
 	// return the Bootstrap System API
-	return boot(exports.api, commonjs);
-};
+	return boot;
+}();
 
 /********************************************************************************************
 * Bootstrap in the correct way depending on the environment									*
@@ -221,13 +287,18 @@ exports.api.boot = function(window, commonjs){
 // Check if in a CommonJS Module Environment
 if (typeof require !== "undefined") {
 	// call bootstrap with a provisioned window scope because we are in a CommonJS Module Environment
-	exports.api.boot = exports.api.boot({
-		location: {
-			protocol: "memory:",
-			href: "memory:/" + "/apprequire/"
-		}
-	}, true);
+	exports.boot = exports.boot({
+			location: {
+				protocol: "memory:",
+				href: "memory:/" + "/apprequire/"
+			},
+			require: require,
+			exports: exports,
+			module: module
+		}, 
+		true
+	);
 } else {
 	// other environment, probably browser (CommonJS Extra Module Environment)
-	exports.api.boot = exports.api.boot(window, false);
+	exports.boot(window, false);
 }

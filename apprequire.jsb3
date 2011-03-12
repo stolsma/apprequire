@@ -7,8 +7,11 @@
             "target": "apprequire.js",
             "debug": true,
             "files" : [
+                {"path": "src/",      "name": "bootstrap.js"},
                 {"path": "src/",      "name": "coreModuleLayer.js"},
-                {"path": "src/",      "name": "bootstrap.js"}
+                {"path": "src/",      "name": "genericContext.js"},
+                {"path": "src/",      "name": "genericPackage.js"},
+                {"path": "src/",      "name": "genericLoader.js"}
             ]
 		}
     ]
