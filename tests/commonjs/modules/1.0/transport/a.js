@@ -1,6 +1,6 @@
-define("a", ["./b"], function(require, exports, module) {
+module.declare("a", ["./b"], function(require, exports, module) {
 	exports.foo = "bar";
 });
 
-define("b", function(require, exports, module) {
+module.declare("b", function(require, exports, module) {
 });

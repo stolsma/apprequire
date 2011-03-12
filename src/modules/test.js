@@ -1,4 +1,4 @@
-module.declare(["system"], function(require, exports, module) {
+module.declare('test', ["system"], function(require, exports, module) {
 	var system = require("system");
 	
 	exports.print = function () {
