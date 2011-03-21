@@ -42,19 +42,10 @@
 /**
  * Core Module Layer definition
  */
-// Check for an existing version of an exports object. If that does not exists then define a new exports reference.
-var exports;
-if (typeof exports === "undefined")
-	exports = {};
-
-// create the api namespace if not already available
-if (typeof exports.api === "undefined")
-	exports.api = {};
-
-// define the Core Module Layer API
-exports.api.cms = function(){
+module.declare([], function(require, exports, module){
 	var UNDEF,													// undefined constant for comparison functions
 		objEscStr = '_',										// Object property escape string
+		api = exports.commonjs = {},							// create the commonjs api namespace
 		
 		//The following are module state constants
 		INIT = 'INIT',
@@ -81,11 +72,11 @@ exports.api.cms = function(){
 	/********************************************************************************************
 	* Core Module System Module Store implemented as Class										*
 	********************************************************************************************/
-	function Store() {
+	function ModuleStore() {
 		this.modules = {};								// initialize module store
 	}
 	
-	Store.prototype = {
+	ModuleStore.prototype = {
 		/*******************************************************************************\
 		*	modules store functions														*
 		\*******************************************************************************/	
@@ -125,115 +116,36 @@ exports.api.cms = function(){
 	********************************************************************************************/
 	/**
 	 * CMS class definition
-	 * @param {object} api Reference to the CommonJS API namespace to use for this Core Module System.
 	 */
-	function CMS(api, debug) {
-		var that = this;
-		
-		that.api = api;
-		that.store = new Store();
-		
-		mixin(api, {
-			
-			/***************************************************************************************\
-			* Input functions																		*
-			\***************************************************************************************/
-			/**
-			 * create a module in the modules list
-			 * @param {string} id The full top level id of the module in the module system.
-			 * @param {array} deps Array of fully top level dependency id's in the module system.
-			 * @param {function} factoryFn The factory function of the module.
-			 * @return {bool} True if ok, false if module already exists
-			 */
-			memoize: function() {
-				return that.memoize.apply(that, arguments);
-			},
-			
-			isMemoized: function() {
-				return that.isMemoized.apply(that, arguments);
-			},
-			
-			require: function() {
-				return that.require.apply(that, arguments);
-			},
-
-			/***************************************************************************************\
-			* Hook functions																		*
-			\***************************************************************************************/
-			/**
-			 * API hook for for higher layers to return the requested module
-			 * @param {string} id The full top level id of the module exports to return.
-			 * @return {exports} Requested module exports or undef if not there
-			 */
-			requireHook: function(id){
-				// empty hook so nothing to give back
-				return UNDEF;
-			},
-			
-			/**
-			 * API hook for for higher layers to provide not available modules in this system
-			 * @param {array] deps The full top level module id's that need to be INIT state before cb is called
-			 * @param {function} cb Callback function called when all given deps are in INIT state
-			 */
-			provideHook: function(deps, cb){
-				// return nothing done = false
-				return false;
-			},
-		
-			/**
-			 * API hook for for higher layers to return the exports of the main module of the root system
-			 * @param {string} id The full top level id of the module who wants to know its context main module exports
-			 * @return {exports} The exports of the context main module 
-			 */
-			getMainHook: function(id){
-				// nothing there so return undefined
-				return UNDEF;
-			},
-	
-			/**
-			 * API hook for for higher layers to return a Context wide canonical module id
-			 * @param {string} id The full top level id for which the Context wide canonical id is requested   
-			 * @return {string} The Context wide canonical id version of the given id
-			 */
-			idHook: function(id){
-				// for now nothing to do so just return id
-				return id;
-			}
-		}, true);
-		
-		// give debugging info back
-		if (debug) api.store = that.store;
+	function CMS() {
+		this.store = new ModuleStore();
 	}
 
 	CMS.prototype = {
-		/*******************************************************************************\
-		*	CMS API functions															*
-		\*******************************************************************************/	
 		/**
-		 * Get the requested module
+		 * API hook to get the requested module
 		 * @param {string} id The full top level id of the module exports to return.
 		 * @return {exports} Requested module exports or undef if not there
 		 */
-		require: function(id) {
+		require: function CMSRequire(id){
 			var mod;
-			
 			// exists this module in this system?
 			if (mod = this.store.getModule(id)) {
 				return mod.createModule();
 			} 
 			
-			// call higher layer require because maybe in another system ??
-			return this.api.requireHook(id);
+			// return undefined because maybe in another system ??
+			return UNDEF;
 		},
 		
 		/**
-		 * create a module in the modules list
-		 * @param {string} id The full top level id of the module in the module system.
-		 * @param {array} deps Array of fully top level dependency id's in the module system.
+		 * API hook to create a module in this systems modules list
+		 * @param {string} id The full top level id of the module in this module system.
+		 * @param {array} deps Array of full top level dependency id's in this module system.
 		 * @param {function} factoryFn The factory function of the module.
 		 * @return {bool} True if ok, false if module already exists
 		 */
-		memoize: function(id, deps, factoryFn) {
+		memoize: function CMSMemoize(id, deps, factoryFn){
 			// create Module Instance and save in module store if not already exists
 			if (!this.store.existModule(id)) {
 				this.store.setModule(id, new Module(id, deps, factoryFn, this));
@@ -244,44 +156,39 @@ exports.api.cms = function(){
 			return false;
 		},
 		
-		isMemoized: function(id) {
+		// API hook
+		isMemoized: function CMSIsMemoized(id){
 			return this.store.existModule(id);
 		},
 		
 		/**
-		 * provide function
+		 * API hook for for higher layers to provide not available modules in this system
 		 * @param {array] deps The full top level module id's that need to be INIT state before cb is called
-		 * @param {function} cb Callback function called when all deps are in INIT state
+		 * @param {function} cb Callback function called when all given deps are in INIT state
 		 */
-		provide: function(deps, cb){
-			// check which deps are already in INIT or READY state
-			
-			// get the not available dep modules and give the callback function
-			this.api.provideHook(deps, cb);
+		provide: function CMSProvide(deps, cb){
+			// return nothing done = false
+			return false;
 		},
 		
 		/**
-		 * return the exports of the main module of the root system
+		 * API hook to return the exports of the main module of the root system
 		 * @param {string} id The full top level id of the module who wants to know its context main module exports
 		 * @return {exports} The exports of the context main module 
 		 */
-		getMain: function(id){
-			var main;
-			// if not overwritten then the module with id=='' is the main module, so get its exports
-			if (main = this.api.getMainHook(id))
-				return main;
-			else
-				return this.require('');
+		getMain: function CMSGetMain(id){
+			// if not overridden then the module with id=='' is the main module, so get its exports
+			return this.require('');
 		},
 
 		/**
-		 * return a Context wide canonical module id
+		 * API hook to return a Context wide canonical module id
 		 * @param {string} id The full top level id for which the Context wide canonical id is requested   
 		 * @return {string} The Context wide canonical id version of the given id
 		 */
-		id: function(id){
-			// if not overwritten this system IS the context so just return this given full top level id
-			return this.api.idHook(id);
+		id: function CMSId(id){
+			// if not overridden this system IS the context so just return this given full top level id
+			return id;
 		}
 	}
 
@@ -432,9 +339,11 @@ exports.api.cms = function(){
 		}
 	}
 	
-	// return the Core Module System API
-	return function(api, debug){ 
-		new CMS(api, debug);
-		return api;
+	/********************************************************************************************
+	* Core Module Layer API generation															*
+	********************************************************************************************/
+	api.type = 'coreModuleLayer';
+	api.create = function(cfg){ 
+		return new CMS();
 	}
-}();
+})

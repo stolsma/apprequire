@@ -42,22 +42,14 @@
 /**
  * Generic Loader System definition
  */
-// Check for an existing version of an exports object. If that does not exists then define a new exports reference.
-var exports;
-if (typeof exports === "undefined")
-	exports = {};
-
-// create the api namespace if not already available
-if (typeof exports.api === "undefined")
-	exports.api = {};
-
-// define the Generic Loader System API
-exports.api.loader['generic'] = function(){
-	var UNDEF;													// undefined constant for comparison functions
+module.declare([], function(require, exports, module){
+	var UNDEF,													// undefined constant for comparison functions
+		api = exports.commonjs = {};							// create the commonjs api namespace
 	
-	function Loader(api, debug) {
-		this.api = api;
-		this.debug = debug;
+	/********************************************************************************************
+	* Generic Loader implemented as Class														*
+	********************************************************************************************/
+	function Loader() {
 	}
 	
 	Loader.prototype = {
@@ -373,8 +365,11 @@ exports.api.loader['generic'] = function(){
 		}
 	}
 	
-	// return the Core Module System API
-	return function(api, debug) { 
-		return new Loader(api, debug);
+	/********************************************************************************************
+	* Loader System API generation																*
+	********************************************************************************************/
+	api.type = 'genericLoader';
+	api.create = function(cfg){
+		return new Loader(cfg);
 	}
-}();
+});
