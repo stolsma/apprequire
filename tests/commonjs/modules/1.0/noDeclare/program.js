@@ -1,4 +1,4 @@
-module.declare(["test", "a"], function(require, exports, module){
+define(["test", "a"], function(require, exports, module){
 	var test = require('test');
 	try {
 		require('a');

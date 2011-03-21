@@ -1,4 +1,4 @@
-module.declare(["b"], function(require, exports) {
+define(["b"], function(require, exports) {
 	exports.message = require("b").message;
 });
 

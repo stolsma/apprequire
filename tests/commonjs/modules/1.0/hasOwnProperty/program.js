@@ -1,4 +1,4 @@
-module.declare(["hasOwnProperty","toString","test"], function(require, exports, module) {
+define(["hasOwnProperty","toString","test"], function(require, exports, module) {
 	var modulehasOwnProperty = require('hasOwnProperty');
 	var moduletoString = require('toString');
 	var test = require('test');

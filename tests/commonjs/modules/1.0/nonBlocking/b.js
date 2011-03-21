@@ -1,3 +1,3 @@
-module.declare(function(require, exports) {
+define(function(require, exports) {
 	exports.message = "b";
 });

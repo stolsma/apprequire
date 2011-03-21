@@ -28,7 +28,7 @@
 \-------------------------------------------------------------------------------------*/
 /**
  * Testing an implementation of the CommonJS Environment Framework (http://code.tolsma.net/blog/commonjs)
- * This is a Generic Package System
+ * This is a Generic Package layer
  *
  * Based on CommonJS (http://www.commonjs.org) specs, discussions on the Google Groups CommonJS lists 
  * (http://groups.google.com/group/commonjs), RequireJS 0.14.5 (James Burke, http://requirejs.org), 
@@ -38,118 +38,119 @@
  *
  * For documentation how to use this: http://code.tolsma.net/apprequire
  */
- 
+
+
 /**
- * Generic Package System definition
+
+- Need init function coupling to CMS
+- initialize module cache 
+- in init: analize cfg argument how to initialize
+- in init: add main environment (id = "") mapping to module location
+- in init: add standard loader for js modules
+- in init: add other loaders as described in cfg argument
+-  
+
  */
-module.declare('genericPackage', [], function(require, exports, module){
-	var UNDEF;													// undefined constant for comparison functions
-
-	var	mappings = {};						// The mappings store
-
-	/*******************************************************************************\
-	*	mappings store functions													*
-	\*******************************************************************************/	
-	/**
-	 * Get the requested mapping URI
-	 * @param {string} id Id of the mapping URI to return.
-	 * @return {URI} Requested mapping URI or undef if not there
-	 */
-	function getMapping(id) {
-		// prepend with constant to circumvent standard Object properties
-		if ((id.length>0) && (id.charAt(id.length-1) !== '/')) id = id + '/';
-		return mappings[objEscStr + id];
-	}
-	
-	/**
-	 * Set the requested mapping in the mapping list
-	 * @param {string} id Id of the mapping to save.
-	 * @param {URI} value The URI value.
-	 * @return {URI} The set URI value
-	 */
-	function setMapping(id, value) {
-		// prepend with constant to circumvent standard Object properties
-		if ((id.length>0) && (id.charAt(id.length-1) !== '/')) id = id + '/';
-		return mappings[objEscStr + id] = value;
-	}
-	
-	/**
-	 * Resolve from an id the root URI via mappings tree. Recursive function!! 
-	 * @param {string} id Canonicalized id 
-	 * @return object Object with URI and cut back id
-	 */	
-	function getURIid(id, mapped) {
-		// initialize recursion..
-		if (!mapped) mapped='';
-		
-		// look if next added term is a mapping
-		if (getMapping(mapped + getFirstTerm(id) + '/')) {
-			mapped = mapped + getFirstTerm(id) + '/';
-			id = cutFirstTerm(id);
-			return getURIid(id, mapped);
+		var	mappings = {};						// The mappings store
+ 
+ 		/*******************************************************************************\
+		*	mappings store functions													*
+		\*******************************************************************************/	
+		/**
+		 * Get the requested mapping URI
+		 * @param {string} id Id of the mapping URI to return.
+		 * @return {URI} Requested mapping URI or undef if not there
+		 */
+		function getMapping(id) {
+			// prepend with constant to circumvent standard Object properties
+			if ((id.length>0) && (id.charAt(id.length-1) !== '/')) id = id + '/';
+			return mappings[objEscStr + id];
 		}
 		
-		// return the result 
-		return {
-			URI: getMapping(mapped) + id,
-			id: id
-		};
-	}
-	
-	function procesPackageCfg(cfg) {
-		var map;
-
-		// see if uid is defined in new cfg, and check if it is the same as created;
-		if (cfg.uid && cfg.uid !== this.uid) {
-			// change to new uid and save extra ref as this package must be known under previuos uid and new uid
-			this.uid = cfg.uid;
-			setPackage(cfg.uid, this);
+		/**
+		 * Set the requested mapping in the mapping list
+		 * @param {string} id Id of the mapping to save.
+		 * @param {URI} value The URI value.
+		 * @return {URI} The set URI value
+		 */
+		function setMapping(id, value) {
+			// prepend with constant to circumvent standard Object properties
+			if ((id.length>0) && (id.charAt(id.length-1) !== '/')) id = id + '/';
+			return mappings[objEscStr + id] = value;
 		}
 		
-		// save module id that acts as main package module for parent package and add a defer call to 'require' 
-		// that module when ready by calling startUp
-		this.mainId = (cfg.main) ? this.uid + packageDelimiter + cfg.main : null;
-		if (this.mainId) {
-			addDefer(this.mainId, this.startUp, this);
-		};
-		
-		// add lib dir to module uri location if available in cfg else use standard 'lib'
-		this.moduleUri = (cfg.directories && cfg.directories.lib) ? resolveUri(this.uri, cfg.directories.lib) : resolveUri(this.uri, 'lib');
-
-		// iterate through all the paths to create new path references for this package
-		iterate(cfg.paths, function(newId, pathcfg) {
-			this.setPath(newId, resolvePath(this.moduleUri, pathcfg));						// resolve the new path against the current lib package path
-		}, this);
-		
-		// iterate through all the mappings to create and load new packages
-		this.createMappings(cfg.mappings);
-		
-		return this;																		// ready for next function on this package
-	}
-	
-	/**
-	 * Map new package to short id and if the package is not already loaded define and load it
-	 * @param (object) mappings Standard mapping object
-	 */
-	function createMappings(mappings){
-		// iterate through all the mappings to create and load new packages
-		iterate(mappings, function(newId, mapcfg) {
-			var mapping = {}; 
-			mapping.uri = (mapcfg.location) ? resolvePath(this.uri, mapcfg.location) : '';	// get the location of the mapped package
-			mapping.uid = (mapcfg.uid) ? mapcfg.uid : mapping.uri;							// get the uid of the mapped package
-			this.setMapping(newId, mapping);												// and add to mappings definitions
-			if (!getPackage(mapping.uid)) {
-				if (mapping.uri === '') throw 'No mapping location for package: ' + this.uid + ' and mapping: '+ newId;
-				(new Package(mapping.uid, mapping.uri)).loadPackageDef();					// if not already defined then define this new package and start loading def
+		/**
+		 * Resolve from an id the root URI via mappings tree. Recursive function!! 
+		 * @param {string} id Canonicalized id 
+		 * @return object Object with URI and cut back id
+		 */	
+		function getURIid(id, mapped) {
+			// initialize recursion..
+			if (!mapped) mapped='';
+			
+			// look if next added term is a mapping
+			if (getMapping(mapped + getFirstTerm(id) + '/')) {
+				mapped = mapped + getFirstTerm(id) + '/';
+				id = cutFirstTerm(id);
+				return getURIid(id, mapped);
 			}
-		}, this);
-	}
-		
-	/********************************************************************************************
-	* Package System API generation																*
-	********************************************************************************************/
-	exports.commonjs = {
-		create: function(cfg){
+			
+			// return the result 
+			return {
+				URI: getMapping(mapped) + id,
+				id: id
+			};
 		}
-	};
-});
+		
+				procesPackageCfg: function(cfg) {
+			var map;
+	
+			// see if uid is defined in new cfg, and check if it is the same as created;
+			if (cfg.uid && cfg.uid !== this.uid) {
+				// change to new uid and save extra ref as this package must be known under previuos uid and new uid
+				this.uid = cfg.uid;
+				setPackage(cfg.uid, this);
+			}
+			
+			// save module id that acts as main package module for parent package and add a defer call to 'require' 
+			// that module when ready by calling startUp
+			this.mainId = (cfg.main) ? this.uid + packageDelimiter + cfg.main : null;
+			if (this.mainId) {
+				addDefer(this.mainId, this.startUp, this);
+			};
+			
+			// add lib dir to module uri location if available in cfg else use standard 'lib'
+			this.moduleUri = (cfg.directories && cfg.directories.lib) ? resolveUri(this.uri, cfg.directories.lib) : resolveUri(this.uri, 'lib');
+
+			// iterate through all the paths to create new path references for this package
+			iterate(cfg.paths, function(newId, pathcfg) {
+				this.setPath(newId, resolvePath(this.moduleUri, pathcfg));						// resolve the new path against the current lib package path
+			}, this);
+			
+			// iterate through all the mappings to create and load new packages
+			this.createMappings(cfg.mappings);
+			
+			return this;																		// ready for next function on this package
+		},
+		
+		
+		/**
+		 * Map new package to short id and if the package is not already loaded define and load it
+		 * @param (object) mappings Standard mapping object
+		 */
+		createMappings: function(mappings){
+			// iterate through all the mappings to create and load new packages
+			iterate(mappings, function(newId, mapcfg) {
+				var mapping = {}; 
+				mapping.uri = (mapcfg.location) ? resolvePath(this.uri, mapcfg.location) : '';	// get the location of the mapped package
+				mapping.uid = (mapcfg.uid) ? mapcfg.uid : mapping.uri;							// get the uid of the mapped package
+				this.setMapping(newId, mapping);												// and add to mappings definitions
+				if (!getPackage(mapping.uid)) {
+					if (mapping.uri === '') throw 'No mapping location for package: ' + this.uid + ' and mapping: '+ newId;
+					(new Package(mapping.uid, mapping.uri)).loadPackageDef();					// if not already defined then define this new package and start loading def
+				}
+			}, this);
+		},
+		
+
+		

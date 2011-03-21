@@ -1,3 +1,4 @@
-module.declare(function(require, exports, module) {
-	exports.foo = function(){};
+define(function(require, exports, module) {
+exports.foo = function() {};
+
 });
