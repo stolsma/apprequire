@@ -42,10 +42,8 @@
 /**
  * Generic Package System definition
  */
-module.declare([], function(require, exports, module){
-	var UNDEF,													// undefined constant for comparison functions
-		api = exports.commonjs = {};							// create the commonjs api namespace
-	
+module.declare('genericPackage', [], function(require, exports, module){
+	var UNDEF;													// undefined constant for comparison functions
 
 	var	mappings = {};						// The mappings store
 
@@ -150,7 +148,8 @@ module.declare([], function(require, exports, module){
 	/********************************************************************************************
 	* Package System API generation																*
 	********************************************************************************************/
-	api.type = 'genericPackage';
-	api.create = function(cfg){ 
-	}
+	exports.commonjs = {
+		create: function(cfg){
+		}
+	};
 });

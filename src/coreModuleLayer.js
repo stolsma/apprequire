@@ -42,10 +42,9 @@
 /**
  * Core Module Layer definition
  */
-module.declare([], function(require, exports, module){
+module.declare('coreModuleLayer', [], function(require, exports, module){
 	var UNDEF,													// undefined constant for comparison functions
 		objEscStr = '_',										// Object property escape string
-		api = exports.commonjs = {},							// create the commonjs api namespace
 		
 		//The following are module state constants
 		INIT = 'INIT',
@@ -98,6 +97,7 @@ module.declare([], function(require, exports, module){
 		 */
 		setModule: function(id, value) {
 			// prepend with constant to circumvent standard Object properties
+			console.log('Module stored: ' + id);
 			return this.modules[objEscStr + id] = value;
 		},
 		
@@ -117,7 +117,10 @@ module.declare([], function(require, exports, module){
 	/**
 	 * CMS class definition
 	 */
-	function CMS() {
+	function CMS(uid) {
+		// save the uri for this module system
+		this.uid = uid;
+		// create the module store for this module system
 		this.store = new ModuleStore();
 	}
 
@@ -189,7 +192,42 @@ module.declare([], function(require, exports, module){
 		id: function CMSId(id){
 			// if not overridden this system IS the context so just return this given full top level id
 			return id;
-		}
+		},
+		
+		/**
+		 * Resolve the given relative id to the current id or if not relative just give it back
+		 * @param {string} id The id to resolve
+		 * @return {string} resolved and sanatized id.
+		 */
+		resolveId: function CMSResolveId(curId, id) {
+			if (id.charAt(0) === '.') {
+				// if relative start then resolve...
+				id = curId + '/' + id;
+				var oldId = id.split('/');
+				var newId = [];
+				var i;
+
+				if (id.charAt(id.length - 1) === '/')
+					oldId.push("INDEX");
+
+				for (i = 0; i < oldId.length; i++) {
+					if (oldId[i] == '.' || !oldId[i].length) {
+						newId.pop();
+						continue;
+					}
+					if (oldId[i] == '..') {
+						if (!newId.length)
+							throw new Error("Invalid module path: " + path);
+						newId.pop();
+						newId.pop();
+						continue;
+					}
+					newId.push(oldId[i]);
+				}
+				id = newId.join('/');
+			}
+			return id;
+		}		
 	}
 
 	/********************************************************************************************
@@ -218,7 +256,7 @@ module.declare([], function(require, exports, module){
 		 */
 		require: function(id) {
 			// resolve id to current environment
-			id = (id === '') ? id : this.resolveId(id);
+			id = (id === '') ? id : this.cms.resolveId(this.id, id);
 			
 			// get requested module exports
 			var exports = this.cms.require(id);
@@ -244,46 +282,14 @@ module.declare([], function(require, exports, module){
 			// normalize dependancy ids relative to the module requiring it
 			for (var i=0; deps[i]; i++) {
 				// resolve given dependency and save for load
-				lDeps.push(this.resolveId(deps[i]));
+				lDeps.push(this.cms.resolveId(this.id, deps[i]));
 			};
 			
 			// Call Core Module System to load the requested modules and if ready call the callback function
-			this.cms.provide(ldeps, cb)
+			this.cms.provide(lDeps, cb)
 			
 			// return undefined at this moment, standard is not clear about this.
 			return UNDEF;
-		},
-		
-		/**
-		 * Resolve the given relative id to the current id or if not relative just give it back
-		 * @param {string} id The id to resolve
-		 * @return {string} resolved and sanatized id.
-		 */
-		resolveId: function(id) {
-			if (id.charAt(0) === '.') {
-				// if relative start then resolve...
-				id = this.id + '/' + id;
-				var oldId = id.split('/');
-				var newId = [];
-				var i;
-
-				if (id.charAt(id.length - 1) === '/')
-					oldId.push("INDEX");
-
-				for (i = 0; i < oldId.length; i++) {
-					if (oldId[i] == '.' || !oldId[i].length)
-						continue;
-					if (oldId[i] == '..') {
-						if (!newId.length)
-							throw new Error("Invalid module path: " + path);
-						newId.pop();
-						continue;
-					}
-					newId.push(oldId[i]);
-				}
-				id = newId.join('/');
-			}
-			return id;
 		},
 		
 		/**
@@ -342,8 +348,7 @@ module.declare([], function(require, exports, module){
 	/********************************************************************************************
 	* Core Module Layer API generation															*
 	********************************************************************************************/
-	api.type = 'coreModuleLayer';
-	api.create = function(cfg){ 
-		return new CMS();
-	}
+	exports.create = function(uid){
+		return new CMS(uid);
+	};
 })

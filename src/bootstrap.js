@@ -61,16 +61,24 @@ exports.boot = function(){
 			commonjsAPI: {},
 			modules: {},
 			debug: true,
-			waitSeconds: 6000,
-			baseUrlMatch: /apprequire\.js/i
+			timeout: 6000,
+			baseUrlMatch: /apprequire/i
 		},
 					
 		// default commonjs API:
 		commonjsAPI = {
 			cml: "coreModuleLayer",
 			context: "genericContext",
-			package: "genericPackage",
-			loader: "genericLoader",
+			contextPlugins: [
+				"genericPackage"
+			],
+			loader: "scriptLoader",
+			loaderPlugins: [
+				"moduleTransport"
+			],
+			systemModules: [
+				"system"
+			]
 		},
 		
 		// CommonJS Context ID Type
@@ -143,7 +151,7 @@ exports.boot = function(){
 			if (src) {
 				if (src.match(baseUrlMatch)) {
 					//Look for a context attribute to configure the first context.
-					result = script.getAttribute('context');
+					result = script.getAttribute('data-context');
 					break;
 				}
 			}
@@ -186,30 +194,28 @@ exports.boot = function(){
 	 * @param {function} factoryFn Function to define the exports of this module.
 	 * @param {object} contextCfg Object with the configuration for the context to create.
 	 */
-	function addModule(dep, factoryFn, contextCfg){
-		var exports = {},
-			modules = contextCfg.modules,
+	function addModule(id, dep, factoryFn, contextCfg){
+		var modules = contextCfg.modules,
 			commonjsAPI = contextCfg.commonjsAPI,
-			api, context;
+			context;
 		
-		// Execute factory function to get commonjs api information
-		mixin(exports, factoryFn.call(null, null, exports, null));
-		
-		if (exports.commonjs !== UNDEF) {
-		// exports comes back with commonjs api information
-			api = exports.commonjs;
-			if (api.type && api.create){
-				// save this api information
-				modules[api.type] = api.create;
-				// check if all modules are now loaded. If true then startup first context
-				if (bootstrapReady(commonjsAPI, modules)){
-					// delete declare because only in use for bootstrap...
-					delete contextCfg.env.module.declare;
-					// if context API exists then create context with current cfg, and the System Module list. If something goes wrong then throw error
-					if (!modules[commonjsAPI[CJS_TYPE_Context]] || !(context = modules[commonjsAPI[CJS_TYPE_Context]](contextCfg))) throw new Error("No correct CommonJS Module API declaration!!");
-					// save context for later use ??
-					contextList.push(context)
-				}
+		if ((typeof id == 'string') && (id !== UNDEF)) {
+			// save this api information
+			modules[id] = {
+				dep: dep,
+				factoryFn: factoryFn
+			};
+			// check if all modules are now loaded. If true then startup first context
+			if (bootstrapReady(commonjsAPI, modules)){
+				// delete declare because only in use for bootstrap...
+				delete contextCfg.env.module.declare;
+
+				// Execute factory function to get commonjs api information
+				context = modules.execute(commonjsAPI[CJS_TYPE_Context]);
+				// if context API exists then create context with current cfg, and the System Module list. If something goes wrong then throw error
+				if (!context || !(context = context.create(contextCfg))) throw new Error("No correct CommonJS Module API declaration!!");
+				// save context for later use ??
+				contextList.push(context)
 			}
 		} else {
 		// non CommonJS system API module is declared, throw error
@@ -218,9 +224,20 @@ exports.boot = function(){
 	}
 	
 	function bootExtraModuleEnvironment(contextCfg){
+		contextCfg.modules.execute = function(id){
+			var exports = {};
+			// if this module exists then execute factoryFn
+			if (this[id]) {
+				mixin(exports, this[id].factoryFn.call(null, null, exports, null));
+				return exports;
+			} else 
+				throw new Error('(bootstrap.modules.execute) Module for given id doesnt exists!');
+			// return nothing
+			return UNDEF;
+		};
 		contextCfg.env.module = {
-			declare: function(deb, factoryFn){
-				addModule(deb, factoryFn, contextCfg);
+			declare: function(id, deb, factoryFn){
+				addModule(id, deb, factoryFn, contextCfg);
 			}
 		};
 	}
@@ -237,9 +254,9 @@ exports.boot = function(){
 		// mix defaultcfg with cfg
 		mixin(cfg, defaultcfg);
 				
-		// then get possible script attribute configuration option if in browser env
+		// then get possible script attribute configuration option if in browser env. Those have preference!!!
 		if (env.document !== UNDEF) 
-			mixin(cfg, getContextConfig(env.document, cfg.baseUrlMatch));
+			mixin(cfg, getContextConfig(env.document, cfg.baseUrlMatch), true);
 		
 		// create location propertie if not already defined	
 		mixin(cfg, {

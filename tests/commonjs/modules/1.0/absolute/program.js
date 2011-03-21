@@ -1,4 +1,4 @@
-define(["test", "submodule/a", "b"], function(require, exports, module) {
+module.declare(["test", "submodule/a", "b"], function(require, exports, module) {
 	var test = require('test');
 	var a = require('submodule/a');
 	var b = require('b');

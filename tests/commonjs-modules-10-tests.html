@@ -106,7 +106,7 @@
 				
 				if (typeof test === "string") {
 					writeHeader(test);
-					test = encodeURIComponent(testFolder + test);
+					test = encodeURIComponent(testFolder + test + '/');
 					
 					if (useWorkers)	{
 						worker = new Worker("runner.js?" + test);
