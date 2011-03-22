@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+		<title>Using data-context attribute to initialize AppRequire</title>
+		<meta name="description" content="Example showing how to use AppRequire">
+		<meta name="author" content="Sander Tolsma">
+		
+		<script data-context="{&#34;location&#34;: &#34;./modules/&#34;, &#34;main&#34;: &#34;program&#34;, &#34;timeout&#34;: 2000}" src="../../apprequire-debug.js"></script>
+		
+		<style>
+			body {font: 13px Arial;}
+			.text {color: black;}
+			.pass {color: green;}
+			.fail, .error {color: red;}
+		</style>
+	</head>
+	<body>
+		<h1>AppRequire Example: Using data-context attribute to initialize AppRequire</h1>
+	</body>
+	<script>
+		var testTime = 4000,
+			runTimeOut = setTimeout(testTimeOut, testTime);
+		
+		function printResults(txt, style) {
+			var d = document.createElement("div");
+			setTextContent(d, txt);
+			d.className = style;
+			document.body.appendChild(d);
+			
+			// Test is ready so start next test
+			if (txt == 'DONE') {
+				// clear timeout
+				clearTimeout(runTimeOut);
+				// start next test
+				testComplete();
+			}
+		}
+		
+		function setTextContent(e, txt) {
+			if (typeof e.innerText === "string") e.innerText = txt;
+			else e.textContent = txt;
+		}
+		
+		function writeHeader(name) {
+			var h = document.createElement("h3");
+			setTextContent(h, name);
+			document.body.appendChild(h);
+		}
+		
+		function testTimeOut() {
+			runTimeOut = 0;
+			printResults('TIMEOUT Test takes to long !!!', 'error');
+			// do next test from list
+			testComplete();
+		}
+		
+		function testComplete() {
+			printResults('Example execution ended!!!', 'text');
+		}
+			
+	</script>
+</html>
