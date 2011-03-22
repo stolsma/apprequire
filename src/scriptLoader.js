@@ -167,7 +167,6 @@ module.declare('scriptLoader', [], function(require, exports, module){
 		ready: function(cbData, script, state){
 			var cb;
 			
-			console.log('(scriptLoader.ready) Script :' + script.src);
 			// do nothing because already parsed this scriptload
 			if (script._done) { 
 				throw new error('2nd time script ready call!!');
@@ -182,8 +181,6 @@ module.declare('scriptLoader', [], function(require, exports, module){
 			
 			// give the Transport Plugin a signal that scriptload is ready
 			this.callTransports('loadReady', cbData);
-			console.log('(scriptLoader.ready return) Script :' + script.src);
-			console.log(' ');
 		},
 		
 		/**
@@ -197,7 +194,7 @@ module.declare('scriptLoader', [], function(require, exports, module){
 			if (this.testInteractive) {
 				for (i=0; script = this.scripts[i]; i++){
 					if (script.readyState === "interactive") {
-						return script.src;
+						return script._moduleURI;
 					}
 				};
 			};
@@ -234,7 +231,7 @@ module.declare('scriptLoader', [], function(require, exports, module){
 				horb = doc.getElementsByTagName("head")[0] || doc.getElementsByTagName("body")[0], 	// get location of scripts in DOM
 				file = doc.createElement("script"); 												// create file tag from scripttag
 
-			console.log('scriptload: ' + uri)
+			file._moduleURI = uri; // save for later use because browsers change src field sometimes (like IE does)
 			file._timer = setTimeout(this.scriptTimer(file, cbData, cb, scope), this.timeout);
 			file.type = "text/javascript";
 			file.onload = file.onreadystatechange = this.scriptLoad(file, cbData, cb, scope);
@@ -254,6 +251,7 @@ module.declare('scriptLoader', [], function(require, exports, module){
 		 */
 		cleanScriptTag: function(script){
 			script._done = true;
+			delete script._moduleURI;
 			script.onload = script.onreadystatechange = new Function("");
 			script.onerror = new Function("");
 			if (script._timer) clearTimeout(script._timer);

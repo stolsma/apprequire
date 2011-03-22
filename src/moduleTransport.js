@@ -157,7 +157,6 @@ module.declare('moduleTransport', [], function(require, exports, module){
 				moduleAPI,
 				allDeps = [];
 								
-			console.log('(moduleTransport.LoadReady) uri: ' + uri);
 			// first handle all waiting modules to be defined	
 			for (i=0; def = this.defQueue[i]; i++){
 				// if module specific uri then use module specific uri else use function local uri
@@ -181,7 +180,6 @@ module.declare('moduleTransport', [], function(require, exports, module){
 			
 			// remove api for given uri from the store
 			this.apiStore.remove(uri);
-			console.log('(moduleTransport.LoadReady return) uri: ' + uri);
 		},
 		
 		/**

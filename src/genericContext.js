@@ -156,7 +156,6 @@ module.declare('genericContext', [], function(require, exports, module){
 		 * @param {array} args The arguments given back by the used loader.
 		 */
 		loaded: function(resource, cb, args){
-			console.log('(loaderbase.loaded) Resource :' + resource.uri + resource.id);
 			// if callback function exists then call it with given arguments
 			if (cb !== UNDEF) cb.call(null, resource, args);
 		},
@@ -169,7 +168,6 @@ module.declare('genericContext', [], function(require, exports, module){
 		createLoadedCb: function(resource, cb){
 			var that = this;
 			return function contextLoadedCb(){
-				console.log('(loaderbase.createLoadedCb) Resource :' + resource.uri + resource.id);
 				that.loaded.call(that, resource, cb, arguments);
 			};
 		},
@@ -203,7 +201,6 @@ module.declare('genericContext', [], function(require, exports, module){
 		// main module given to startup with??
 		if (cfg.location && cfg.main) {
 			this.provide('commonjs.org', cfg.main, function contextConstructorInitLoadCB(){
-				 console.log('Loaded main module: ' + cfg.main + ' from: ' + cfg.location);
 				 that.moduleSubs.get('commonjs.org').cml.require(cfg.main);
 			})
 		}
@@ -321,8 +318,6 @@ module.declare('genericContext', [], function(require, exports, module){
 			return function contextProvideCallback(resource, args){
 				var i, res;
 				
-				console.log('(context.provideCallback) Ready loading: ' + resource.uri + resource.id + ' Waiting for: ' + reslist);
-				
 				// ready loading this resource so remove from context global loading list
 				that.loading.remove(resource.uri + resource.id);
 				
@@ -335,10 +330,8 @@ module.declare('genericContext', [], function(require, exports, module){
 				if (res !== UNDEF) {
 					reslist.splice(i, 1);
 					// was last one so call the given callback
-					if (reslist.length == 0) {
-						console.log('(context.provideCallback) Calling callback function');
+					if (reslist.length == 0)
 						cb.call(null, args);
-					}
 				} else
 					// called with wrong resource, shouldn't happen but to be sure throw error if it happens
 					throw new Error('Wrong resource returned for this callback!! (context.provideCallback)'); 
@@ -378,12 +371,9 @@ module.declare('genericContext', [], function(require, exports, module){
 					
 				},
 				loadReady: function ContextAPILoadReady(cb){
-					console.log('(context.CreateApi.loadready) Deps:' + this.deps);
-				
 					// Call Core Module System to load the requested modules and if ready call the callback function
 					cms.provide(this.deps, cb);
 					this.deps = [];					
-					console.log('(context.CreateApi.loadready return) Deps:' + this.deps);
 				}
 			};
 		}

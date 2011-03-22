@@ -419,7 +419,6 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 		 */
 		setModule: function(id, value) {
 			// prepend with constant to circumvent standard Object properties
-			console.log('Module stored: ' + id);
 			return this.modules[objEscStr + id] = value;
 		},
 		
@@ -832,7 +831,6 @@ module.declare('genericContext', [], function(require, exports, module){
 		 * @param {array} args The arguments given back by the used loader.
 		 */
 		loaded: function(resource, cb, args){
-			console.log('(loaderbase.loaded) Resource :' + resource.uri + resource.id);
 			// if callback function exists then call it with given arguments
 			if (cb !== UNDEF) cb.call(null, resource, args);
 		},
@@ -845,7 +843,6 @@ module.declare('genericContext', [], function(require, exports, module){
 		createLoadedCb: function(resource, cb){
 			var that = this;
 			return function contextLoadedCb(){
-				console.log('(loaderbase.createLoadedCb) Resource :' + resource.uri + resource.id);
 				that.loaded.call(that, resource, cb, arguments);
 			};
 		},
@@ -879,7 +876,6 @@ module.declare('genericContext', [], function(require, exports, module){
 		// main module given to startup with??
 		if (cfg.location && cfg.main) {
 			this.provide('commonjs.org', cfg.main, function contextConstructorInitLoadCB(){
-				 console.log('Loaded main module: ' + cfg.main + ' from: ' + cfg.location);
 				 that.moduleSubs.get('commonjs.org').cml.require(cfg.main);
 			})
 		}
@@ -997,8 +993,6 @@ module.declare('genericContext', [], function(require, exports, module){
 			return function contextProvideCallback(resource, args){
 				var i, res;
 				
-				console.log('(context.provideCallback) Ready loading: ' + resource.uri + resource.id + ' Waiting for: ' + reslist);
-				
 				// ready loading this resource so remove from context global loading list
 				that.loading.remove(resource.uri + resource.id);
 				
@@ -1011,10 +1005,8 @@ module.declare('genericContext', [], function(require, exports, module){
 				if (res !== UNDEF) {
 					reslist.splice(i, 1);
 					// was last one so call the given callback
-					if (reslist.length == 0) {
-						console.log('(context.provideCallback) Calling callback function');
+					if (reslist.length == 0)
 						cb.call(null, args);
-					}
 				} else
 					// called with wrong resource, shouldn't happen but to be sure throw error if it happens
 					throw new Error('Wrong resource returned for this callback!! (context.provideCallback)'); 
@@ -1054,12 +1046,9 @@ module.declare('genericContext', [], function(require, exports, module){
 					
 				},
 				loadReady: function ContextAPILoadReady(cb){
-					console.log('(context.CreateApi.loadready) Deps:' + this.deps);
-				
 					// Call Core Module System to load the requested modules and if ready call the callback function
 					cms.provide(this.deps, cb);
 					this.deps = [];					
-					console.log('(context.CreateApi.loadready return) Deps:' + this.deps);
 				}
 			};
 		}
@@ -1396,7 +1385,6 @@ module.declare('scriptLoader', [], function(require, exports, module){
 		ready: function(cbData, script, state){
 			var cb;
 			
-			console.log('(scriptLoader.ready) Script :' + script.src);
 			// do nothing because already parsed this scriptload
 			if (script._done) { 
 				throw new error('2nd time script ready call!!');
@@ -1411,8 +1399,6 @@ module.declare('scriptLoader', [], function(require, exports, module){
 			
 			// give the Transport Plugin a signal that scriptload is ready
 			this.callTransports('loadReady', cbData);
-			console.log('(scriptLoader.ready return) Script :' + script.src);
-			console.log(' ');
 		},
 		
 		/**
@@ -1426,7 +1412,7 @@ module.declare('scriptLoader', [], function(require, exports, module){
 			if (this.testInteractive) {
 				for (i=0; script = this.scripts[i]; i++){
 					if (script.readyState === "interactive") {
-						return script.src;
+						return script._moduleURI;
 					}
 				};
 			};
@@ -1463,7 +1449,7 @@ module.declare('scriptLoader', [], function(require, exports, module){
 				horb = doc.getElementsByTagName("head")[0] || doc.getElementsByTagName("body")[0], 	// get location of scripts in DOM
 				file = doc.createElement("script"); 												// create file tag from scripttag
 
-			console.log('scriptload: ' + uri)
+			file._moduleURI = uri; // save for later use because browsers change src field sometimes (like IE does)
 			file._timer = setTimeout(this.scriptTimer(file, cbData, cb, scope), this.timeout);
 			file.type = "text/javascript";
 			file.onload = file.onreadystatechange = this.scriptLoad(file, cbData, cb, scope);
@@ -1483,6 +1469,7 @@ module.declare('scriptLoader', [], function(require, exports, module){
 		 */
 		cleanScriptTag: function(script){
 			script._done = true;
+			delete script._moduleURI;
 			script.onload = script.onreadystatechange = new Function("");
 			script.onerror = new Function("");
 			if (script._timer) clearTimeout(script._timer);
@@ -1703,7 +1690,6 @@ module.declare('moduleTransport', [], function(require, exports, module){
 				moduleAPI,
 				allDeps = [];
 								
-			console.log('(moduleTransport.LoadReady) uri: ' + uri);
 			// first handle all waiting modules to be defined	
 			for (i=0; def = this.defQueue[i]; i++){
 				// if module specific uri then use module specific uri else use function local uri
@@ -1727,7 +1713,6 @@ module.declare('moduleTransport', [], function(require, exports, module){
 			
 			// remove api for given uri from the store
 			this.apiStore.remove(uri);
-			console.log('(moduleTransport.LoadReady return) uri: ' + uri);
 		},
 		
 		/**

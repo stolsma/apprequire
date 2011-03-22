@@ -97,7 +97,6 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 		 */
 		setModule: function(id, value) {
 			// prepend with constant to circumvent standard Object properties
-			console.log('Module stored: ' + id);
 			return this.modules[objEscStr + id] = value;
 		},
 		
