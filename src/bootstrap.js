@@ -68,7 +68,6 @@ exports.boot = function(){
 		// default commonjs API:
 		commonjsAPI = {
 			cml: "coreModuleLayer",
-			context: "genericContext",
 			contextPlugins: [
 				"genericPackage"
 			],
@@ -82,7 +81,7 @@ exports.boot = function(){
 		},
 		
 		// CommonJS Context ID Type
-		CJS_TYPE_Context = 'context';
+		CJS_TYPE_CML = 'cml';
 		
 	/********************************************************************************************
 	* Utility functions																			*
@@ -211,7 +210,7 @@ exports.boot = function(){
 				delete contextCfg.env.module.declare;
 
 				// Execute factory function to get commonjs api information
-				context = modules.execute(commonjsAPI[CJS_TYPE_Context]);
+				context = modules.execute(commonjsAPI[CJS_TYPE_CML]);
 				// if context API exists then create context with current cfg, and the System Module list. If something goes wrong then throw error
 				if (!context || !(context = context.create(contextCfg))) throw new Error("No correct CommonJS Module API declaration!!");
 				// save context for later use ??
