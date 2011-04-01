@@ -34,7 +34,7 @@
  * (http://groups.google.com/group/commonjs), RequireJS 0.14.5 (James Burke, http://requirejs.org), 
  * FlyScript.js (copyright Kevin H. Smith, https://github.com/khs4473), BravoJS (copyright Wes Garland,
  * http://code.google.com/p/bravojs/), Pinf/Loader (copyright Christoph Dorn, https://github.com/pinf/loader-js)
- * and utility code (mixin function) of Ext Core (copyright Sencha, http://www.sencha.com)
+ * and utility code of Ext Core 4 (copyright Sencha, http://www.sencha.com)
  *
  * For documentation how to use this: http://code.tolsma.net/apprequire
  */
@@ -45,43 +45,782 @@
 module.declare('coreModuleLayer', [], function(require, exports, module){
 	var UNDEF,													// undefined constant for comparison functions
 		objEscStr = '_',										// Object property escape string
-		
+		Base,													// Base class... All other classes created with system functions inherit from this class
+		system = {},											// system singleton definition in this private scope
+		objectPrototype = Object.prototype,
+		enumerables = true,
+		enumerablesTest = { toString: 1 },
+		i,
+
 		// CommonJS ID Types
-		CJS_TYPE_LOADER = 'loader';
+		CJS_TYPE_LOADER = 'loader',
 		
 		//The following are module state constants
 		INIT = 'INIT',
 		READY = 'READY';
 		
 	/********************************************************************************************
-	* Utility functions																			*
+	* System Singleton methods definition and system env sniffing								*
 	********************************************************************************************/
+	for (i in enumerablesTest) {
+		enumerables = null;
+	}
+
+	if (enumerables) {
+		enumerables = ['hasOwnProperty', 'valueOf', 'isPrototypeOf', 'propertyIsEnumerable',
+					   'toLocaleString', 'toString', 'constructor'];
+	}
+
 	/**
-	 * Simple function to mix in properties from source into target,
-	 * but only if target does not already have a property of the same name.
-	 * @param {object} target
-	 * @param {object} source
-	 * @param {bool} force (optional) Force addition from source to target
+	 * Put it into system namespace so that we can reuse outside this
+	 * @type Array
 	 */
-	function mixin(target, source, force) {
-		for (var prop in source) {
-			if (!(prop in target) || force) {
-				target[prop] = source[prop];
+	system.enumerables = enumerables;
+		
+	/**
+	 * Copies all the properties of config to the specified object.
+	 * IMPORTANT: Note that it doesn't take care of recursive merging and cloning without referencing the original objects / arrays
+	 * Use system.merge instead if you need that.
+	 * @param {Object} object The receiver of the properties
+	 * @param {Object} config The source of the properties
+	 * @param {Object} defaults A different object that will also be applied for default values
+	 * @return {Object} returns obj
+	 */
+	system.apply = function(object, config, defaults) {
+		if (defaults) {
+			system.apply(object, defaults);
+		}
+
+		if (object && config && typeof config === 'object') {
+			var i, j, k;
+
+			for (i in config) {
+				object[i] = config[i];
+			}
+
+			if (enumerables) {
+				for (j = enumerables.length; j--;) {
+					k = enumerables[j];
+					if (config.hasOwnProperty(k)) {
+						object[k] = config[k];
+					}
+				}
 			}
 		}
-	}
+		return object;
+	};
+
+	/**
+	 * A full set of static methods to do type checking
+	 * @ignore
+	 */
+	system.apply(system, {
+		/**
+		 * Returns true if the passed value is empty. The value is deemed to be empty if it is:
+		 * <ul>
+		 * <li>null</li>
+		 * <li>undefined</li>
+		 * <li>an empty array</li>
+		 * <li>a zero length string (Unless the <tt>allowBlank</tt> parameter is <tt>true</tt>)</li>
+		 * </ul>
+		 * @param {Mixed} value The value to test
+		 * @param {Boolean} allowBlank (optional) true to allow empty strings (defaults to false)
+		 * @return {Boolean}
+		 */
+		isEmpty: function(value, allowBlank) {
+			return (value === null) || (value === undefined) || ((system.isArray(value) && !value.length)) || (!allowBlank ? value === '' : false);
+		},
+
+		/**
+		 * Returns true if the passed value is a JavaScript Array, false otherwise.
+		 * @param {Mixed} target The target to test
+		 * @return {Boolean}
+		 */
+		isArray: function(value) {
+			return objectPrototype.toString.apply(value) === '[object Array]';
+		},
+
+		/**
+		 * Returns true if the passed value is a JavaScript Date object, false otherwise.
+		 * @param {Object} object The object to test
+		 * @return {Boolean}
+		 */
+		isDate: function(value) {
+			return objectPrototype.toString.apply(value) === '[object Date]';
+		},
+
+		/**
+		 * Returns true if the passed value is a JavaScript Object, false otherwise.
+		 * @param {Mixed} value The value to test
+		 * @return {Boolean}
+		 */
+		isObject: function(value) {
+			return !!value && !value.tagName && objectPrototype.toString.call(value) === '[object Object]';
+		},
+
+		/**
+		 * Returns true if the passed value is a JavaScript 'primitive', a string, number or boolean.
+		 * @param {Mixed} value The value to test
+		 * @return {Boolean}
+		 */
+		isPrimitive: function(value) {
+			return system.isString(value) || system.isNumber(value) || system.isBoolean(value);
+		},
+
+		/**
+		 * Returns true if the passed value is a JavaScript Function, false otherwise.
+		 * @param {Mixed} value The value to test
+		 * @return {Boolean}
+		 */
+		isFunction: function(value) {
+			return objectPrototype.toString.apply(value) === '[object Function]';
+		},
+
+		/**
+		 * Returns true if the passed value is a number. Returns false for non-finite numbers.
+		 * @param {Mixed} value The value to test
+		 * @return {Boolean}
+		 */
+		isNumber: function(value) {
+			return objectPrototype.toString.apply(value) === '[object Number]' && isFinite(value);
+		},
+
+		/**
+		 * Validates that a value is numeric.
+		 * @param {Mixed} value Examples: 1, '1', '2.34'
+		 * @return {Boolean} True if numeric, false otherwise
+		 */
+		isNumeric: function(value) {
+			return !isNaN(parseFloat(value)) && isFinite(value);
+		},
+
+		/**
+		 * Returns true if the passed value is a string.
+		 * @param {Mixed} value The value to test
+		 * @return {Boolean}
+		 */
+		isString: function(value) {
+			return typeof value === 'string';
+		},
+
+		/**
+		 * Returns true if the passed value is a boolean.
+		 * @param {Mixed} value The value to test
+		 * @return {Boolean}
+		 */
+		isBoolean: function(value) {
+			return objectPrototype.toString.apply(value) === '[object Boolean]';
+		},
+
+		/**
+		 * Returns true if the passed value is an HTMLElement
+		 * @param {Mixed} value The value to test
+		 * @return {Boolean}
+		 */
+		isElement: function(value) {
+			return value ? !! value.tagName : false;
+		},
+
+		/**
+		 * Returns true if the passed value is defined.
+		 * @param {Mixed} value The value to test
+		 * @return {Boolean}
+		 */
+		isDefined: function(value) {
+			return typeof value !== 'undefined';
+		},
+
+		/**
+		 * Returns true if the passed value is iterable, false otherwise
+		 * @param {Mixed} value The value to test
+		 * @return {Boolean}
+		 */
+		isIterable: function(value) {
+			if (!value) {
+				return false;
+			}
+			//check for array or arguments
+			if (system.isArray(value) || value.callee) {
+				return true;
+			}
+			//check for node list type
+			if (/NodeList|HTMLCollection/.test(objectPrototype.toString.call(value))) {
+				return true;
+			}
+
+			//NodeList has an item and length property
+			//IXMLDOMNodeList has nextNode method, needs to be checked first.
+			return ((typeof value.nextNode !== 'undefined' || value.item) && system.isNumber(value.length)) || false;
+		}
+	});
+	
+	/**
+	 * A full set of static methods to do variable handling
+	 * @ignore
+	 */
+	system.apply(system, {
+		/**
+		 * Clone almost any type of variable including array, object and Date without keeping the old reference
+		 * @param {Mixed} item The variable to clone
+		 * @return {Mixed} clone
+		 */
+		clone: function(item) {
+			if (!item) {
+				return item;
+			}
+
+			// Date
+			if (item instanceof Date) {
+				return new Date(item.getTime());
+			}
+
+			var i, j, k, clone, key;
+
+			// Array
+			if (system.isArray(item)) {
+				i = item.length;
+
+				clone = new Array(i);
+
+				while (i--) {
+					clone[i] = system.clone(item[i]);
+				}
+			}
+			// Object
+			else if (system.isObject(item) && item.constructor === Object) {
+				clone = {};
+
+				for (key in item) {
+					clone[key] = system.clone(item[key]);
+				}
+
+				if (enumerables) {
+					for (j = enumerables.length; j--;) {
+						k = enumerables[j];
+						clone[k] = item[k];
+					}
+				}
+			}
+
+			return clone || item;
+		},
+		
+		/**
+		 * Merges any number of objects recursively without referencing them or their children.
+		 * @param {Object} source,...
+		 * @return {Object} merged The object that is created as a result of merging all the objects passed in.
+		 */
+		merge: function(source, key, value) {
+			if (system.isString(key)) {
+				if (system.isObject(value) && system.isObject(source[key])) {
+					if (value.constructor === Object) {
+						system.merge(source[key], value);
+					} else {
+						source[key] = value;
+					}
+				}
+				else if (system.isObject(value) && value.constructor !== Object){
+					source[key] = value;
+				}
+				else {
+					source[key] = system.clone(value);
+				}
+	
+				return source;
+			}
+	
+			var i = 1,
+				len = arguments.length,
+				obj, prop;
+	
+			for (; i < len; i++) {
+				obj = arguments[i];
+				for (prop in obj) {
+					if (obj.hasOwnProperty(prop)) {
+						system.merge(source, prop, obj[prop]);
+					}
+				}
+			}
+	
+			return source;
+		},
+		
+		/**
+		 * Simple function to mix in properties from source into target,
+		 * but only if target does not already have a property of the same name.
+		 * @param {object} target
+		 * @param {object} source
+		 * @param {bool} force (optional) Force addition from source to target
+		 */
+		mixin: function(target, source, force) {
+			for (var prop in source) {
+				if (!(prop in target) || force) {
+					target[prop] = source[prop];
+				}
+			}
+		},
+		
+		/**
+		 * Converts any iterable (numeric indices and a length property) into a true array
+		 * Don't use this on strings. IE doesn't support "abc"[0] which this implementation depends on.
+		 * For strings, use this instead: <code>"abc".match(/./g) => [a,b,c];</code>
+		 * @param {Iterable} array the iterable object to be turned into a true Array.
+		 * @param {Number} start a number that specifies where to start the selection.
+		 * @param {Number} end a number that specifies where to end the selection.
+		 * @return {Array} array
+		 */
+		toArray: function(array, start, end) {
+			return Array.prototype.slice.call(array, start || 0, end || array.length);
+		},
+
+		/**
+		 * Converts a value to an array if it's not already an array. Note that `undefined` and `null` are ignored.
+		 * @param {Array/Mixed} value The value to convert to an array if it is defined and not already an array.
+		 * @return {Array} array
+		 */
+		from: function(value) {
+			if (system.isIterable(value)) {
+				return system.toArray(value);
+			}
+
+			if (system.isDefined(value) && value !== null) {
+				return [value];
+			}
+
+			return [];
+		},
+		
+		/**
+		 * It acts as a wrapper around another method which originally accepts 2 arguments 
+		 * for <code>name</code> and <code>value</code>.
+		 * The wrapped function then allows "flexible" value setting of either:
+		 *
+		 * <ul>
+		 *      <li><code>name</code> and <code>value</code> as 2 arguments</li>
+		 *      <li>one single object argument with multiple key - value pairs</li>
+		 * </ul>
+		 *
+		 * For example:
+		 * <pre><code>
+	var setValue = Ext.Function.flexSetter(function(name, value) {
+		this[name] = value;
+	});
+	
+	// Afterwards
+	// Setting a single name - value
+	setValue('name1', 'value1');
+	
+	// Settings multiple name - value pairs
+	setValue({
+		name1: 'value1',
+		name2: 'value2',
+		name3: 'value3'
+	});
+		 * </code></pre>
+		 * @param {Function} setter
+		 * @returns {Function} flexSetter
+		 */
+		flexSetter: function(fn) {
+			return function(a, b) {
+				var k, i;
+	
+				if (a === null) {
+					return this;
+				}
+	
+				if (typeof a !== 'string') {
+					for (k in a) {
+						if (a.hasOwnProperty(k)) {
+							fn.call(this, k, a[k]);
+						}
+					}
+	
+					if (system.enumerables) {
+						for (i = system.enumerables.length; i--;) {
+							k = system.enumerables[i];
+							if (a.hasOwnProperty(k)) {
+								fn.call(this, k, a[k]);
+							}
+						}
+					}
+				} else {
+					fn.call(this, a, b);
+				}
+	
+				return this;
+			};
+		},
+	
+	   /**
+		 * Create a new function from the provided <code>fn</code>, change <code>this</code> to the provided scope, optionally
+		 * overrides arguments for the call. (Defaults to the arguments passed by the caller)
+		 *
+		 * @param {Function} fn The function to delegate.
+		 * @param {Object} scope (optional) The scope (<code><b>this</b></code> reference) in which the function is executed.
+		 * <b>If omitted, defaults to the browser window.</b>
+		 * @param {Array} args (optional) Overrides arguments for the call. (Defaults to the arguments passed by the caller)
+		 * @param {Boolean/Number} appendArgs (optional) if True args are appended to call args instead of overriding,
+		 * if a number the args are inserted at the specified position
+		 * @return {Function} The new function
+		 */
+		bind: function(fn, scope, args, appendArgs) {
+			var method = fn,
+				applyArgs;
+	
+			return function() {
+				var callArgs = args || arguments;
+	
+				if (appendArgs === true) {
+					callArgs = Array.prototype.slice.call(arguments, 0);
+					callArgs = callArgs.concat(args);
+				}
+				else if (system.isNumber(appendArgs)) {
+					callArgs = Array.prototype.slice.call(arguments, 0); // copy arguments first
+					applyArgs = [appendArgs, 0].concat(args); // create method call params
+					Array.prototype.splice.apply(callArgs, applyArgs); // splice them in
+				}
+	
+				return method.apply(scope || window, callArgs);
+			};
+		},
+	
+		/**
+		 * Create a new function from the provided <code>fn</code>, the arguments of which are pre-set to `args`.
+		 * New arguments passed to the newly created callback when it's invoked are appended after the pre-set ones.
+		 * This is especially useful when creating callbacks.
+		 * For example:
+		 *
+		var originalFunction = function(){
+			alert(Ext.Array.from(arguments).join(' '));
+		};
+	
+		var callback = Ext.Function.pass(originalFunction, ['Hello', 'World']);
+	
+		callback(); // alerts 'Hello World'
+		callback('by Me'); // alerts 'Hello World by Me'
+	
+		 * @param {Function} fn The original function
+		 * @param {Array} args The arguments to pass to new callback
+		 * @param {Object} scope (optional) The scope (<code><b>this</b></code> reference) in which the function is executed.
+		 * @return {Function} The new callback function
+		 */
+		pass: function(fn, args, scope) {
+			if (args) {
+				args = system.from(args);
+			}
+	
+			return function() {
+				return fn.apply(scope, args.concat(system.toArray(arguments)));
+			};
+		}
+		
+	});
+	
+	/**
+	 * A full set of methods to do CommonJS class inheritance
+	 * @ignore
+	 */
+	system.apply(system, {
+		classes: {},
+		
+		addClass: function(name, superclass, ext) {
+			var classes = system.classes,
+				tmp = function(){};
+			
+			// check if new class and parent class already exists
+			if ((classes[name]) || !(classes[superclass]))
+				return false;
+			
+			// save name
+			ext.$className = name;
+			// get superclass
+			superclass = classes[superclass];
+			// create new class using the superclass and save in classes list
+			classes[name] = system.extend(superclass, ext);
+		},
+		
+		instantiate: function() {
+			var args = system.toArray(arguments),
+				name = args.shift(),
+				temp = function() {},
+				cls, constructor, instanceCls;
+
+			// get class
+			cls = system.classes[name];
+			
+			//<debug error>
+			if (!cls) {
+				throw new Error("[system.instantiate] Cannot create an instance of unrecognized class name: " + name);
+			}
+			//</debug>
+
+			constructor = cls.prototype.constructor;
+			instanceCls = function() {
+				return constructor.apply(this, args);
+			};
+
+			temp.prototype = cls.prototype;
+			instanceCls.prototype = new temp();
+			instanceCls.prototype.constructor = instanceCls;
+
+			return new instanceCls();
+		},
+
+		/**
+		 * @private
+		 * @function
+		 * @param {Function} superclass
+		 * @param {Object} overrides
+		 * @return {Function} The subclass constructor from the <tt>overrides</tt> parameter, or a generated one if not provided.
+		 */
+		extend: function(superclass, overrides) {
+			var extend = superclass,
+				base = Base,
+				temp = function() {},
+				parent, i, k, ln, staticName, parentStatics,
+				cls = function() {
+					return this.constructor.apply(this, arguments);
+				},
+				staticProp;
+				
+			// copy the standard static properties from Base to new class
+			for (staticProp in Base) {
+				if (Base.hasOwnProperty(staticProp)) {
+					cls[staticProp] = Base[staticProp];
+				}
+			}
+			
+			// which class to extend, given one or the basic Base class
+			if (typeof extend === 'function' && extend !== Object) {
+				parent = extend;
+			}
+			else {
+				parent = base;
+			}
+
+			temp.prototype = parent.prototype;
+			cls.prototype = new temp();
+
+			// if the given parent class doesn't have the correct basic properties copy them from the Base class
+			if (!('$class' in parent)) {
+				for (i in base.prototype) {
+					if (!parent.prototype[i]) {
+						parent.prototype[i] = base.prototype[i];
+					}
+				}
+			}
+
+			// create reference to this class for later use by inheriting classes
+			cls.prototype.self = cls;
+
+			// which constructor to use to create this new class
+			if (overrides.hasOwnProperty('constructor')) {
+				cls.prototype.constructor = cls;
+			}
+			else {
+				cls.prototype.constructor = parent.prototype.constructor;
+			}
+
+			// which class was the parent of this new class
+			cls.superclass = cls.prototype.superclass = parent.prototype;
+			
+			// extend the new class with the given new properties
+			cls.extend(overrides);
+			
+			// and return the new class
+			return cls;
+		}
+	});
+	
+	/********************************************************************************************
+	* Base Class	All other classes inherit from Base											*
+	********************************************************************************************/
+	// add base class to classes list. 
+	Base = system.classes['Base'] = function(){};
+	// and extend the prototype in the classical way
+	Base.prototype = {
+		$className: 'Ext.Base',
+
+		$class: Base,
+
+		/**
+		 * Get the reference to the current class from which this object was instantiated. 
+		 * @type Class
+		 * @protected
+		 * @markdown
+		 */
+		self: Base,
+
+		/**
+		 * Default constructor, simply returns `this`
+		 *
+		 * @constructor
+		 * @protected
+		 * @return {Object} this
+		 */
+		constructor: function() {
+			return this;
+		},
+
+		/**
+		 * Call the overridden superclass' method.
+		 * @protected
+		 * @param {Array/Arguments} args The arguments, either an array or the `arguments` object
+		 * from the current method, for example: `this.callParent(arguments)`
+		 * @return {Mixed} Returns the result from the superclass' method
+		 */
+		callParent: function(args) {
+			var method = this.callParent.caller,
+				parentClass, methodName;
+
+			if (!method.$owner) {
+				//<debug error>
+				if (!method.caller) {
+					throw new Error("[callParent] Calling a protected method from the public scope");
+				}
+				//</debug>
+
+				method = method.caller;
+			}
+
+			parentClass = method.$owner.superclass;
+			methodName = method.$name;
+
+			//<debug error>
+			if (!(methodName in parentClass)) {
+				throw new Error("[#" + methodName + "] this.callParent() was called but there's no such method (" + methodName + ") found in the parent class ()");
+			}
+			//</debug>
+
+			return parentClass[methodName].apply(this, args || []);
+		},
+
+		/**
+		 * Call the original method that was previously overridden with {@link Base#override}
+		 * @param {Array/Arguments} args The arguments, either an array or the `arguments` object
+		 * @return {Mixed} Returns the result after calling the overridden method
+		 */
+		callOverridden: function(args) {
+			var method = this.callOverridden.caller;
+
+			//<debug error>
+			if (!method.$owner) {
+				throw new Error("[callOverridden] Calling a protected method from the public scope");
+			}
+
+			if (!method.$previous) {
+				throw new Error("[] this.callOverridden was called in '" + method.$name + "' but this method has never been overridden");
+			}
+			//</debug>
+
+			return method.$previous.apply(this, args || []);
+		}
+	};
+	
+	// These static Base properties will be copied to every newly created class
+	system.apply(Base, {
+		/**
+		 * @private
+		 */
+		ownMethod: function(name, fn) {
+			var originalFn, className;
+
+			if (fn === system.emptyFn) {
+				this.prototype[name] = fn;
+				return;
+			}
+
+			if (fn.$isOwned) {
+				originalFn = fn;
+
+				fn = function() {
+					return originalFn.apply(this, arguments);
+				};
+			}
+
+			fn.$owner = this;
+			fn.$name = name;
+			fn.$isOwned = true;
+
+			this.prototype[name] = fn;
+		},
+
+		/**
+		 * @private
+		 */
+		borrowMethod: function(name, fn) {
+			if (!fn.$isOwned) {
+				this.ownMethod(name, fn);
+			}
+			else {
+				this.prototype[name] = fn;
+			}
+		},
+
+		/**
+		 * Add / override prototype properties of this class. This method is a {@link Ext.Function#flexSetter flexSetter}.
+		 * It can either accept an object of key - value pairs or 2 arguments of name - value.
+		 * @property implement
+		 * @static
+		 * @type Function
+		 * @param {String/Object} name See {@link Ext.Function#flexSetter flexSetter}
+		 * @param {Mixed} value See {@link Ext.Function#flexSetter flexSetter}
+		 * @markdown
+		 */
+		extend: system.flexSetter(function(name, value) {
+			if (system.isObject(this.prototype[name]) && system.isObject(value)) {
+				system.merge(this.prototype[name], value);
+			}
+			else if (system.isFunction(value)) {
+				this.ownMethod(name, value);
+			}
+			else {
+				this.prototype[name] = value;
+			}
+		}),
+
+		/**
+		 * Add / override prototype properties of this class. This method is similar to {@link Base#extend},
+		 * except that it stores the reference of the overridden method which can be called later on via {@link Base#callOverridden}
+		 * @property override
+		 * @static
+		 * @type Function
+		 * @param {String/Object} name See {@link Ext.Function#flexSetter flexSetter}
+		 * @param {Mixed} value See {@link Ext.Function#flexSetter flexSetter}
+		 * @markdown
+		 */
+		override: system.flexSetter(function(name, value) {
+			if (system.isObject(this.prototype[name]) && system.isObject(value)) {
+				system.merge(this.prototype[name], value);
+			}
+			else if (system.isFunction(value)) {
+				if (system.isFunction(this.prototype[name])) {
+					var previous = this.prototype[name];
+					this.ownMethod(name, value);
+					this.prototype[name].$previous = previous;
+				}
+				else {
+					this.ownMethod(name, value);
+				}
+			}
+			else {
+				this.prototype[name] = value;
+			}
+		})
+	});
 	
 	/********************************************************************************************
 	* Generic Store implemented as Class														*
 	********************************************************************************************/
-	function Store() {
-		this.store = {};										// initialize store
-	}
-	
-	Store.prototype = {
+	system.addClass('Store', 'Base', {
 		/*******************************************************************************\
 		*	Store functions																*
 		\*******************************************************************************/	
+	
+		constructor: function() {
+			this.store = {};										// initialize store
+		},
+	
 		/**
 		 * Get the requested stored object
 		 * @param {string} id The id of the object to return.
@@ -126,19 +865,19 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 		exist: function(id) {
 			return (this.store[objEscStr + id] !== UNDEF);
 		}
-	}
+	});
 	
 	/********************************************************************************************
 	* Generic Loader implemented as Class														*
 	********************************************************************************************/
-	function LoaderBase() {
-		/**
-		 * The store with the defined scheme / SpecificLoader combinations
-		 */
-		this.loaders = new Store();
-	}
-	
-	LoaderBase.prototype = {
+	system.addClass('LoaderBase', 'Base', {
+		constructor: function() {
+			/**
+			 * The store with the defined scheme / SpecificLoader combinations
+			 */
+			this.loaders = system.instantiate('Store');
+		},
+		
 		/**
 		 * Add SpecificLoader to the list
 		 * @param {string} scheme The URI scheme identifier the given SpecificLoader will handle (without : )
@@ -196,38 +935,38 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 		getScheme: function(resource){
 			return 'http';
 		}
-	}
+	});
 	
 	/********************************************************************************************
 	* Generic Context implemented as Class														*
 	********************************************************************************************/
-	function Context(cfg) {
-		var that = this;
+	system.addClass('Context', 'Base', {
+		constructor: function(cfg) {
+			var that = this;
+			
+			// save the config
+			this.cfg = cfg;
+			// create a store for all the module subsystems that are to be created in this context
+			this.moduleSubs = system.instantiate('Store');
+			// create a store for loading resources
+			this.loading = system.instantiate('Store');
+			// deferred list
+			this.deferred = [];
+			
+			// generate loaders and the plugins
+			this.startupLoader(cfg);
+												
+			// and create environment hooks
+			this.startupCMS(cfg);
+			
+			// main module given to startup with??
+			if (cfg.location && cfg.main) {
+				this.provide('commonjs.org', cfg.main, function contextConstructorInitLoadCB(){
+					 that.moduleSubs.get('commonjs.org').cms.require(cfg.main);
+				})
+			}
+		},
 		
-		// save the config
-		this.cfg = cfg;
-		// create a store for all the module subsystems that are to be created in this context
-		this.moduleSubs = new Store();
-		// create a store for loading resources
-		this.loading = new Store();
-		// deferred list
-		this.deferred = [];
-		
-		// generate loaders and the plugins
-		this.startupLoader(cfg);
-											
-		// and create environment hooks
-		this.startupCMS(cfg);
-		
-		// main module given to startup with??
-		if (cfg.location && cfg.main) {
-			this.provide('commonjs.org', cfg.main, function contextConstructorInitLoadCB(){
-				 that.moduleSubs.get('commonjs.org').cms.require(cfg.main);
-			})
-		}
-	}
-	
-	Context.prototype = {
 		/********************************************************************************************
 		* Context Startup Functions																	*
 		********************************************************************************************/
@@ -237,7 +976,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 				cms;
 			
 			// create the Main Module System
-			cms = new CMS('commonjs.org');
+			cms = system.instantiate('CMS', 'commonjs.org');
 			// save the main Module System with other system info for later retrieval
 			this.moduleSubs.set('commonjs.org', {
 				cms: cms,
@@ -285,7 +1024,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 			
 			// create loaderbase and add loader
 			env.module.cfg = cfg;
-			env.module.loaderBase = this.loaderBase = new LoaderBase();
+			env.module.loaderBase = this.loaderBase = system.instantiate('LoaderBase');
 			this.loaderBase.addLoader('http', loader);
 		},
 		
@@ -395,22 +1134,22 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 				}
 			};
 		}
-	}
+	});
 	
 	/********************************************************************************************
 	* Module System implemented as Class														*
 	********************************************************************************************/
-	/**
-	 * CMS class definition
-	 */
-	function CMS(uid) {
-		// save the uri for this module system
-		this.uid = uid;
-		// create the module store for this module system
-		this.store = new Store();
-	}
+	system.addClass('CMS', 'Base', {
+		/**
+		 * CMS class definition
+		 */
+		constructor: function(uid) {
+			// save the uri for this module system
+			this.uid = uid;
+			// create the module store for this module system
+			this.store = system.instantiate('Store');
+		},
 
-	CMS.prototype = {
 		/**
 		 * API hook to get the requested module
 		 * @param {string} id The full top level id of the module exports to return.
@@ -437,7 +1176,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 		memoize: function CMSMemoize(id, deps, factoryFn){
 			// create Module Instance and save in module store if not already exists
 			if (!this.store.exist(id)) {
-				this.store.set(id, new Module(id, deps, factoryFn, this));
+				this.store.set(id, system.instantiate('Module', id, deps, factoryFn, this));
 				return true;
 			}
 			
@@ -514,28 +1253,28 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 			}
 			return id;
 		}		
-	}
+	});
 
 	/********************************************************************************************
 	* Generic Module implemented as Module Class												*
 	********************************************************************************************/
-	/**
-	 * Module class definition
-	 * @param {string} id The global id of this Module
-	 */
-	function Module(id, deps, factoryFn, cms) {
-		this.id = id;																// The full top level id of this module in this system
-		this.deps = deps;															// The module dependencies (The full top level id's)
-		this.factoryFn = factoryFn;													// Factory Function
-		this.cms = cms;																// The core module system this module is defined in
-		
-		this.exports = {};															// The exports object for this module
-		this.module = null;															// The module variable for the factory function
-		
-		this.state = INIT;															// Module instance is in INIT state.
-	}
+	system.addClass('Module', 'Base', {
+		/**
+		 * Module class definition
+		 * @param {string} id The global id of this Module
+		 */
+		constructor: function(id, deps, factoryFn, cms) {
+			this.id = id;																// The full top level id of this module in this system
+			this.deps = deps;															// The module dependencies (The full top level id's)
+			this.factoryFn = factoryFn;													// Factory Function
+			this.cms = cms;																// The core module system this module is defined in
+			
+			this.exports = {};															// The exports object for this module
+			this.module = null;															// The module variable for the factory function
+			
+			this.state = INIT;															// Module instance is in INIT state.
+		},
 	
-	Module.prototype = {
 		/**
 		 * Local require function
 		 * @param {string} id
@@ -589,7 +1328,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 				// need reference to module object with id and uri of this module
 				// do mixin of result and this.exports
 				this.state = READY;	// set to true before initialization call because module can request itself.. (circular dep problems) 
-				mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
+				system.mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
 			}
 			
 			// if READY then return this module exports else return null 
@@ -629,12 +1368,13 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 			// return the module
 			return this.module;
 		}
-	}
+	});
 	
 	/********************************************************************************************
 	* Core Module Layer API generation															*
 	********************************************************************************************/
 	exports.create = function(cfg){
-		return new Context(cfg);
+		cfg.system = system;
+		return system.instantiate('Context', cfg);
 	};
 })
