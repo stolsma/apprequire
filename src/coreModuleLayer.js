@@ -42,7 +42,7 @@
 /**
  * Core Module Layer definition
  */
-module.declare('coreModuleLayer', [], function(require, exports, module){
+(function() {
 	var UNDEF,													// undefined constant for comparison functions
 		objEscStr = '_',										// Object property escape string
 		Base,													// Base class... All other classes created with system functions inherit from this class
@@ -540,6 +540,12 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 			var classes = system.classes,
 				tmp = function(){};
 			
+			// check if superclass is string else use 'Base' as superclass
+			if (!system.isString(superclass)) { 
+				overrides = superclass;
+				superclass = 'Base';
+			};
+			
 			// check if new class and parent class already exists
 			if ((classes[objEscStr + name]) || !(classes[objEscStr + superclass]))
 				return false;
@@ -832,7 +838,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 	/********************************************************************************************
 	* Generic Store implemented as Class														*
 	********************************************************************************************/
-	system.addClass('Store', 'Base', {
+	system.addClass('Store', {
 		/*******************************************************************************\
 		*	Store functions																*
 		\*******************************************************************************/	
@@ -890,7 +896,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 	/********************************************************************************************
 	* Generic Loader implemented as Class														*
 	********************************************************************************************/
-	system.addClass('LoaderBase', 'Base', {
+	system.addClass('LoaderBase', {
 		constructor: function() {
 			/**
 			 * The store with the defined scheme / SpecificLoader combinations
@@ -960,7 +966,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 	/********************************************************************************************
 	* Generic Context implemented as Class														*
 	********************************************************************************************/
-	system.addClass('Context', 'Base', {
+	system.addClass('Context', {
 		constructor: function(cfg) {
 			var that = this;
 			
@@ -1159,7 +1165,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 	/********************************************************************************************
 	* Module System implemented as Class														*
 	********************************************************************************************/
-	system.addClass('CMS', 'Base', {
+	system.addClass('CMS', {
 		/**
 		 * CMS class definition
 		 */
@@ -1278,7 +1284,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 	/********************************************************************************************
 	* Generic Module implemented as Module Class												*
 	********************************************************************************************/
-	system.addClass('Module', 'Base', {
+	system.addClass('Module', {
 		/**
 		 * Module class definition
 		 * @param {string} id The global id of this Module
@@ -1393,8 +1399,19 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 	/********************************************************************************************
 	* Core Module Layer API generation															*
 	********************************************************************************************/
-	exports.create = function(cfg){
-		cfg.system = system;
+	function create(cfg){
 		return system.instantiate('Context', cfg);
 	};
-})
+	
+	// check if exports variable exists (when called as CommonJS 1.1 module)
+	if (!system.isEmpty(exports))
+		exports.create = create;
+	
+	// call module.class if that function exists to signal addition of one ore more classes (for Modules/2.0 environment)
+	if (system.isFunction(module.class))
+		module.class({
+			type: 'Context',
+			create: create,
+			system: system	
+		});
+})()

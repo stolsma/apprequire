@@ -43,13 +43,10 @@
  * Bootstrap System definition
  */
 // define require, exports, module and window
-var require, exports, module;
-// Check for an existing version of an exports object. If that does not exists then define a new exports reference.
-if (typeof exports === "undefined")
-	exports = {};
+var require, exports, module, window;
 
-// define the Bootstrap System API
-exports.boot = function(){
+// define the Bootstrap System as a self starting function closure
+(function(env) {
 	var UNDEF,													// undefined constant for comparison functions
 		contextList = [],
 		
@@ -67,7 +64,6 @@ exports.boot = function(){
 					
 		// default commonjs API:
 		commonjsAPI = {
-			cml: "coreModuleLayer",
 			contextPlugins: [
 				"genericPackage"
 			],
@@ -79,9 +75,8 @@ exports.boot = function(){
 				"system"
 			]
 		},
-		
-		// CommonJS Context ID Type
-		CJS_TYPE_CML = 'cml';
+		system,
+		CMLCreate;
 		
 	/********************************************************************************************
 	* Utility functions																			*
@@ -121,12 +116,6 @@ exports.boot = function(){
 		uri = uri.split('/');
 		uri = uri.slice(uri.length-1);
 		return uri[0];
-	}
-	
-	/********************************************************************************************
-	* Specific CommonJS environment Bootstrap code												*
-	********************************************************************************************/
-	function bootCommonJS(contextCfg){
 	}
 	
 	/********************************************************************************************
@@ -209,12 +198,10 @@ exports.boot = function(){
 				// delete declare because only in use for bootstrap...
 				delete contextCfg.env.module.declare;
 
-				// Execute factory function to get commonjs api information
-				context = modules.execute(commonjsAPI[CJS_TYPE_CML]);
 				// if context API exists then create context with current cfg, and the System Module list. If something goes wrong then throw error
-				if (!context || !(context = context.create(contextCfg))) throw new Error("No correct CommonJS Module API declaration!!");
+				if (!CMLCreate || !(context = CMLCreate(contextCfg))) throw new Error("No correct CommonJS Module API declaration!!");
 				// save context for later use ??
-				contextList.push(context)
+				contextList.push(context);
 			}
 		} else {
 		// non CommonJS system API module is declared, throw error
@@ -237,6 +224,10 @@ exports.boot = function(){
 		contextCfg.env.module = {
 			declare: function(id, deb, factoryFn){
 				addModule(id, deb, factoryFn, contextCfg);
+			},
+			class: function(clsCfg){
+				system = clsCfg.system;
+				CMLCreate = clsCfg.create;
 			}
 		};
 	}
@@ -273,48 +264,14 @@ exports.boot = function(){
 		return cfg;
 	}
 	
-	/**
-	 * Boot the whole commonjs environment depending on the environment. 
-	 * @param {object} env Description of the current environment
-	 * @param {bool} commonjs True if the current host environment already as some sort of commonjs module environment implemented
-	 * @return {?} The information returned by the specific environment boot procedure
-	 */
-	function boot(env, commonjs){
-		// get the context config
-		var contextCfg = setupConfig(env, {env: env});
-		
-		// select flow of bootstrap on commonjs env
-		if (commonjs) 
-			return bootCommonJS(contextCfg);
-		else
-			return bootExtraModuleEnvironment(contextCfg);
-	}
-	
 	/********************************************************************************************
-	* Bootstrap API definition																	*
+	* Bootstrap startup																			*
 	********************************************************************************************/
-	// return the Bootstrap System API
-	return boot;
-}();
-
-/********************************************************************************************
-* Bootstrap in the correct way depending on the environment									*
-********************************************************************************************/
-// Check if in a CommonJS Module Environment
-if (typeof require !== "undefined") {
-	// call bootstrap with a provisioned window scope because we are in a CommonJS Module Environment
-	exports.boot = exports.boot({
-			location: {
-				protocol: "memory:",
-				href: "memory:/" + "/apprequire/"
-			},
-			require: require,
-			exports: exports,
-			module: module
-		}, 
-		true
-	);
-} else {
-	// other environment, probably browser (CommonJS Extra Module Environment)
-	exports.boot(window, false);
-}
+	/**
+	 * Boot the whole commonjs extr amodule environment depending on given options. 
+	 * @param {object} env Description of the current environment
+	 */
+	bootExtraModuleEnvironment(setupConfig(env, {env: env}));
+	
+	// end of selfstarting bootstrap closure
+})(window);
