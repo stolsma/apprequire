@@ -842,24 +842,44 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 	 * @ignore
 	 */
 	system.apply(system, {
+		/**
+		 * Classes repository
+		 * @property
+		 * @private
+		 */
 		classes: {},
 		
-		addClass: function(name, superclass, ext) {
+		/**
+		 * Creates a new class based on the given superclass and an object with overrides
+		 * @function
+		 * @param {string} name Name for this new class to create. Can be used to get an instantiated version
+		 * @param {string} superclass The superclass where the new class will be based on
+		 * @param {Object} overrides The overrides that need to be applied to this class
+		 * @return {Function} The subclass constructor from the <tt>overrides</tt> parameter, or a generated one if not provided.
+		 */
+		addClass: function(name, superclass, overrides) {
 			var classes = system.classes,
 				tmp = function(){};
 			
 			// check if new class and parent class already exists
-			if ((classes[name]) || !(classes[superclass]))
+			if ((classes[objEscStr + name]) || !(classes[objEscStr + superclass]))
 				return false;
 			
 			// save name
-			ext.$className = name;
+			overrides.$className = name;
 			// get superclass
-			superclass = classes[superclass];
+			superclass = classes[objEscStr + superclass];
 			// create new class using the superclass and save in classes list
-			classes[name] = system.extend(superclass, ext);
+			return classes[objEscStr + name] = system.extend(superclass, overrides);
 		},
 		
+		/**
+		 * Instantiates a requested class with given arguments and returns it
+		 * @function
+		 * @param {string} name Name for this class to instantiate.
+		 * @param {list of variables} arguments list of variables to apply to the class constructor function
+		 * @return {Base} The instantiated class.
+		 */
 		instantiate: function() {
 			var args = system.toArray(arguments),
 				name = args.shift(),
@@ -867,7 +887,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 				cls, constructor, instanceCls;
 
 			// get class
-			cls = system.classes[name];
+			cls = system.classes[objEscStr + name];
 			
 
 			constructor = cls.prototype.constructor;
@@ -952,7 +972,7 @@ module.declare('coreModuleLayer', [], function(require, exports, module){
 	* Base Class	All other classes inherit from Base											*
 	********************************************************************************************/
 	// add base class to classes list. 
-	Base = system.classes['Base'] = function(){};
+	Base = system.classes[objEscStr + 'Base'] = function(){};
 	// and extend the prototype in the classical way
 	Base.prototype = {
 		$className: 'Ext.Base',
