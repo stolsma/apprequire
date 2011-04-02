@@ -75,8 +75,7 @@ var require, exports, module, window;
 				"system"
 			]
 		},
-		system,
-		CMLCreate;
+		system;
 		
 	/********************************************************************************************
 	* Utility functions																			*
@@ -195,13 +194,24 @@ var require, exports, module, window;
 			};
 			// check if all modules are now loaded. If true then startup first context
 			if (bootstrapReady(commonjsAPI, modules)){
-				// delete declare because only in use for bootstrap...
+				// delete declare and addClass because only in use for bootstrap...
 				delete contextCfg.env.module.declare;
+				delete contextCfg.env.module.addClass;
 
-				// if context API exists then create context with current cfg, and the System Module list. If something goes wrong then throw error
-				if (!CMLCreate || !(context = CMLCreate(contextCfg))) throw new Error("No correct CommonJS Module API declaration!!");
+				// create context with current cfg, and the System Module list.
+				context = system.instantiate('Context', contextCfg);
+				
 				// save context for later use ??
 				contextList.push(context);
+				
+				// debug info ??
+				if (contextCfg.debug) {
+					contextCfg.env.module.debug = {
+						system: system,
+						context: context,
+						cfg: contextCfg
+					}
+				}
 			}
 		} else {
 		// non CommonJS system API module is declared, throw error
@@ -225,9 +235,11 @@ var require, exports, module, window;
 			declare: function(id, deb, factoryFn){
 				addModule(id, deb, factoryFn, contextCfg);
 			},
-			class: function(clsCfg){
-				system = clsCfg.system;
-				CMLCreate = clsCfg.create;
+			addClass: function(cls){
+				if (cls.name == 'System')
+					system = cls.system;
+				else
+					cls.addClass(system);
 			}
 		};
 	}
