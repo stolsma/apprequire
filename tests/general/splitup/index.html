@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Program Runner</title>
+	<style>
+		body {
+			font: 13px Arial;
+		}
+		
+		.pass {
+			color: green;
+		}
+		
+		.fail, .error {
+			color: red;
+		}
+	</style>
+	<script data-context="{&#34;commonjsAPI&#34;: { &#34;systemModules&#34;: [&#34;test&#34;, &#34;system&#34;] }, &#34;main&#34;: &#34;program&#34;, &#34;timeout&#34;: 2000}" src="../../../src/apprequire-bootstrap-ua.js"></script>
+	<script src="../../../src/system.js"></script>
+	<script src="../../../src/basicStore.js"></script>
+	<script src="../../../src/basicModule.js"></script>
+	<script src="../../../src/basicModuleSystem.js"></script>
+	<script src="../../../src/basicContext.js"></script>
+	<script src="../../../src/loaderBase.js"></script>
+	<script src="../../../src/scriptLoader.js"></script>
+	<script src="../../../src/moduleTransport.js"></script>
+	<script src="../../../src/modules/system.js"></script>
+	<script src="../../../src/modules/test.js"></script>
+</head>
+	<body>
+    	<h1>Program Runner</h1>
+	</body>
+</html>
+<script>
+	var test = decodeURIComponent((location.search || "?").substring(1));
+	
+	function printResults(txt, style) {
+		var d = document.createElement("div");
+		setTextContent(d, txt);
+		d.className = style;
+		document.body.appendChild(d);
+	}
+	
+	function setTextContent(e, txt) {
+		if (typeof e.innerText === "string") e.innerText = txt;
+		else e.textContent = txt;
+	}
+	
+	// standard module environment testing \\
+			
+
+</script>

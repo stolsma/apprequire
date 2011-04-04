@@ -36,6 +36,8 @@
  * and utility code of Ext Core 4 (copyright Sencha, http://www.sencha.com)
  *
  * For documentation how to use this: http://code.tolsma.net/apprequire
+ * @author Sander Tolsma <code@tolsma.net>
+ * @docauthor Sander Tolsma <code@tolsma.net>
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
@@ -59,6 +61,11 @@
 					   'toLocaleString', 'toString', 'constructor'];
 	}
 
+	/**
+	 * @class System
+	 * AppRequire core utilities and functions.
+	 * @singleton
+	 */
 	/**
 	 * Put it into system namespace so that we can reuse outside this
 	 * @type Array
@@ -649,6 +656,11 @@
 	/********************************************************************************************
 	* Base Class	All other classes inherit from Base											*
 	********************************************************************************************/
+	/**
+	 * @class Base
+	 * The root of all classes created with {@link System#addClass}
+	 * All prototype and static members of this class are inherited by any other class
+	 */
 	// add base class to classes list. 
 	Base = system.classes[objEscStr + 'Base'] = function(){};
 	// and extend the prototype in the classical way
@@ -661,13 +673,11 @@
 		 * Get the reference to the current class from which this object was instantiated. 
 		 * @type Class
 		 * @protected
-		 * @markdown
 		 */
 		self: Base,
 
 		/**
 		 * Default constructor, simply returns `this`
-		 *
 		 * @constructor
 		 * @protected
 		 * @return {Object} this

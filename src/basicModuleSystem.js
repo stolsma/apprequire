@@ -46,7 +46,15 @@
 	********************************************************************************************/
 	ModuleSystemClass = {
 		/**
+		 * @property uid
+		 */
+		/**
+		 * @property store
+		 */
+		/**
 		 * Module System class definition
+		 * @constructor
+		 * @param {string} uid The uid of this module system
 		 */
 		constructor: function(uid) {
 			// save the uri for this module system
@@ -57,10 +65,10 @@
 
 		/**
 		 * API hook to get the requested module
-		 * @param {string} id The full top level id of the module exports to return.
+		 * @param {string} id The module system top level id of the module exports to return.
 		 * @return {exports} Requested module exports or undef if not there
 		 */
-		require: function CMSRequire(id){
+		require: function MSRequire(id){
 			var mod;
 			// exists this module in this system?
 			if (mod = this.store.get(id)) {
@@ -78,7 +86,7 @@
 		 * @param {function} factoryFn The factory function of the module.
 		 * @return {bool} True if ok, false if module already exists
 		 */
-		memoize: function CMSMemoize(id, deps, factoryFn){
+		memoize: function MSMemoize(id, deps, factoryFn){
 			// create Module Instance and save in module store if not already exists
 			if (!this.store.exist(id)) {
 				this.store.set(id, system.instantiate('Module', id, deps, factoryFn, this));
@@ -90,7 +98,7 @@
 		},
 		
 		// API hook
-		isMemoized: function CMSIsMemoized(id){
+		isMemoized: function MSIsMemoized(id){
 			return this.store.exist(id);
 		},
 		
@@ -99,7 +107,7 @@
 		 * @param {array] deps The full top level module id's that need to be INIT state before cb is called
 		 * @param {function} cb Callback function called when all given deps are in INIT state
 		 */
-		provide: function CMSProvide(deps, cb){
+		provide: function MSProvide(deps, cb){
 			// return nothing done = false
 			return false;
 		},
@@ -109,7 +117,7 @@
 		 * @param {string} id The full top level id of the module who wants to know its context main module exports
 		 * @return {exports} The exports of the context main module 
 		 */
-		getMain: function CMSGetMain(id){
+		getMain: function MSGetMain(id){
 			// if not overridden then the module with id=='' is the main module, so get its exports
 			return this.require('');
 		},
@@ -119,17 +127,18 @@
 		 * @param {string} id The full top level id for which the Context wide canonical id is requested   
 		 * @return {string} The Context wide canonical id version of the given id
 		 */
-		id: function CMSId(id){
+		id: function MSId(id){
 			// if not overridden this system IS the context so just return this given full top level id
 			return id;
 		},
 		
 		/**
 		 * Resolve the given relative id to the current id or if not relative just give it back
+		 * @param {string} curId The full module id to resolve from
 		 * @param {string} id The id to resolve
 		 * @return {string} resolved and sanatized id.
 		 */
-		resolveId: function CMSResolveId(curId, id) {
+		resolveId: function MSResolveId(curId, id) {
 			if (id.charAt(0) === '.') {
 				// if relative start then resolve...
 				id = curId + '/' + id;

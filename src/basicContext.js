@@ -49,30 +49,30 @@
 	********************************************************************************************/
 	ContextClass = {
 		/**
-		 * Constructor
+		 * The Context Class Constructor
+		 * @constructor
+		 * @param {cfgObject} cfg The standard cfg object. For this class the following properties are important:
 		 */
 		constructor: function(cfg) {
-			var that = this;
+			var me = this;
 			
 			// save the config
-			this.cfg = cfg;
+			me.cfg = cfg;
 			// create a store for all the module subsystems that are to be created in this context
-			this.moduleSubs = system.instantiate('Store');
+			me.moduleSubs = system.instantiate('Store');
 			// create a store for loading resources
-			this.loading = system.instantiate('Store');
-			// deferred list
-			this.deferred = [];
+			me.loading = system.instantiate('Store');
 			
 			// generate loaders and the plugins
-			this.startupLoader(cfg);
+			me.startupLoader(cfg);
 												
 			// and create environment hooks
-			this.startupCMS(cfg);
+			me.startupCMS(cfg);
 			
 			// main module given to startup with??
 			if (cfg.location && cfg.main) {
-				this.provide('commonjs.org', cfg.main, function contextConstructorInitLoadCB(){
-					 that.moduleSubs.get('commonjs.org').cms.require(cfg.main);
+				me.provide('commonjs.org', cfg.main, function contextConstructorInitLoadCB(){
+					 me.moduleSubs.get('commonjs.org').ms.require(cfg.main);
 				})
 			}
 		},
@@ -80,45 +80,57 @@
 		/********************************************************************************************
 		* Context Startup Functions																	*
 		********************************************************************************************/
+		/**
+		 *
+		 * @param {cfgObject} cfg The standard cfg object. This function uses the following properties:
+		 * cfg.location
+		 * cfg.commonjsAPI
+		 * cfg.modules
+		 */
 		startupCMS: function(cfg){
 			var env = cfg.env,
 				that = this,
-				cms;
+				ms;
 			
 			// create the Main Module System
-			cms = system.instantiate('ModuleSystem', 'commonjs.org');
+			ms = system.instantiate('ModuleSystem', 'commonjs.org');
 			// save the main Module System with other system info for later retrieval
 			this.moduleSubs.set('commonjs.org', {
-				cms: cms,
+				ms: ms,
 				uri: cfg.location
 			});
 			
 			// extend cms API
-			cms.provide = function ContextProvide(deps, cb){
+			ms.provide = function ContextProvide(deps, cb){
 				that.provide(this.uid, deps, cb);
 			};
 			
 			// add default system modules to the main module system
-			this.addSystemModules(cms, cfg.commonjsAPI, cfg.modules);
+			this.addSystemModules(ms, cfg.commonjsAPI, cfg.modules);
 			
 			// create extra module environment require
 			env.require = function wrapperRequire(){
-				return cms.require.apply(cms, arguments);
+				return ms.require.apply(ms, arguments);
 			};
 		},
 		
-		addSystemModules: function(cms, commonjsAPI, modules){
+		/**
+		 *
+		 */
+		addSystemModules: function(ms, commonjsAPI, modules){
 			var i, id;
 			
 			for (i=0; id = commonjsAPI.systemModules[i]; i++){
-				cms.memoize(id, modules[id].deps, modules[id].factoryFn);				
+				ms.memoize(id, modules[id].deps, modules[id].factoryFn);				
 			}
 		},
 		
+		/**
+		 *
+		 */
 		startupLoader: function(cfg){
 			var modules = cfg.modules,
 				commonjsAPI = cfg.commonjsAPI,
-				env = cfg.env,
 				loader; 
 			
 			loader = modules.execute(commonjsAPI[CJS_TYPE_LOADER]);
@@ -133,6 +145,9 @@
 		/********************************************************************************************
 		* Context API Functions																		*
 		********************************************************************************************/
+		/**
+		 *
+		 */
 		provide: function(uid, deps, cb){
 			var i, dep,
 				resources = [];
@@ -142,11 +157,11 @@
 			
 			// run through all required dependencies
 			for (i=0; dep = deps[i]; i++) {
-				//normalize dependency by calling getCMSId
-				dep = this.getCMSId(uid, dep);
+				//normalize dependency by calling getMSId
+				dep = this.getMSId(uid, dep);
 				
 				// does this id already exists in the module system or is this resource already loading?
-				if ((!this.loading.exist(dep.uri + dep.id)) && (!dep.cms.isMemoized(dep.id))) {
+				if ((!this.loading.exist(dep.uri + dep.id)) && (!dep.ms.isMemoized(dep.id))) {
 					// create module system specific Loader API
 					dep.api = this.createAPI(dep.id, dep.uid);
 					// add to loading list
@@ -164,6 +179,9 @@
 				cb.call(null);
 		},
 		
+		/**
+		 *
+		 */
 		provideCallback: function(resources, cb){
 			var i, res, 
 				that = this,
@@ -197,41 +215,65 @@
 			}
 		},
 		
-		getCMSId: function(uid, dep){
-			var cms = this.moduleSubs.get(uid);
+		/**
+		 *
+		 */
+		getMS: function() {
+		},
+		
+		/**
+		 *
+		 */
+		setMS: function() {
+		},
+		
+		/**
+		 * Return all the relevant information from a given Module System identified with its uid
+		 * @param {string} uid The uid of the Module system information is requested from
+		 * @param {dep} dep
+		 * @return {object} An object with all relevant Module System information
+		 */
+		getMSId: function(uid, dep){
+			var ms = this.moduleSubs.get(uid);
 			return {
-				cms: cms.cms,
+				ms: ms.ms,
 				uid: uid,
-				uri: cms.uri,
+				uri: ms.uri,
 				id: dep
 			}
 		},
 		
-		createAPI: function(mid, cms){
-			var cms = this.moduleSubs.get(cms).cms;
+		/**
+		 * Create an API object as defined in the Loader specs
+		 * @param {string} mId The standard ModuleID (resolved to the given Module System) to use 
+		 * @param {string} ms The module system id this API is requested for
+		 * @return {LoaderAPI Object} The API as defined by the Loader specs
+		 */
+		createAPI: function(mId, ms){
+			var ms = this.moduleSubs.get(ms).ms;
 			return {
-				cmsuri: cms.uri,
+				msuri: ms.uri,
 				deps: [],
 				memoize: function ContextAPIMemoize(id, deps, factoryFn){
 					// no given id then use requested id
-					if (id === null) id = mid;
+					if (id === null) id = mId;
 					// no given deps then use empty array
 					if (deps === UNDEF) deps = [];
 			
 					// normalize dependancy ids relative to the module requiring it
 					for (var i=0; deps[i]; i++) {
 						// resolve given dependency and save for load
-						deps[i] = cms.resolveId(id, deps[i]);
+						deps[i] = ms.resolveId(id, deps[i]);
 						this.deps.push(deps[i]);
 					};
 					
 					// add module to the requesting module system
-					cms.memoize(id, deps, factoryFn);
+					ms.memoize(id, deps, factoryFn);
 					
 				},
 				loadReady: function ContextAPILoadReady(cb){
 					// Call Core Module System to load the requested modules and if ready call the callback function
-					cms.provide(this.deps, cb);
+					ms.provide(this.deps, cb);
 					this.deps = [];					
 				}
 			};

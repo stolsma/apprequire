@@ -42,12 +42,20 @@
 		system,													// system singleton definition in this private scope
 		objEscStr = '_',										// Object property escape string
 
-	/********************************************************************************************
-	* Generic Store implemented as Class														*
-	********************************************************************************************/
+	/**
+	 * @class Store
+	 * @extends Base
+	 * A generic store for objects/id combinations
+	 */
 	StoreClass = {
 		/**
-		 * Constructor
+		 * The location where the objects are stored
+		 * @type Object
+		 * @property store
+		 */
+		/**
+		 * The constructor of this class
+		 * @constructor
 		 */
 		constructor: function() {
 			this.store = {};										// initialize store
@@ -55,47 +63,43 @@
 	
 		/**
 		 * Get the requested stored object
-		 * @param {string} id The id of the object to return.
+		 * @param {String} id The id of the object to return.
 		 * @return {Object} Requested object or undef if not there
 		 */
 		get: function(id) {
-			// prepend with constant to circumvent standard Object properties
 			return this.store[objEscStr + id];
 		},
 		
 		/**
 		 * Save the given object in the store
-		 * @param {string} id The id of the object to save.
+		 * @param {String} id The id of the object to save.
 		 * @param {Object} value The object to store.
 		 * @return {Object} The stored object
 		 */
 		set: function(id, value) {
-			// prepend with constant to circumvent standard Object properties
 			return this.store[objEscStr + id] = value;
 		},
 		
 		/**
 		 * Remove the given object from the store
-		 * @param {string} id The id of the object to remove.
+		 * @param {String} id The id of the object to remove.
 		 * @return {Object} The removed object or UNDEF if not existing
 		 */
 		remove: function(id) {
-			// see if object exists
-			var temp = this.store[objEscStr + id];		
-			// check if requested object exists
-			if (temp !== UNDEF)
-				// prepend with constant to circumvent standard Object properties and delete
+			var tmp = this.store[objEscStr + id];
+			// check if requested object exists then delete
+			if (tmp)
 				delete this.store[objEscStr + id];
-			return temp;
+			return tmp;
 		},
 		
 		/**
 		 * Check if the requested object already exists in the store.
-		 * @param {string} id The fid of the object to check.
-		 * @return {bool} True when object exists, false if not
+		 * @param {String} id The fid of the object to check.
+		 * @return {Boolean} True when object exists, false if not
 		 */
 		exist: function(id) {
-			return (this.store[objEscStr + id] !== UNDEF);
+			return this.store[objEscStr + id] !== UNDEF;
 		}
 	};
 	

@@ -28,33 +28,31 @@
 \-------------------------------------------------------------------------------------*/
 /**
  * Testing an implementation of the CommonJS Environment Framework (http://code.tolsma.net/blog/commonjs)
- * This is an implementation of the Bootstrap System
  *
  * Based on CommonJS (http://www.commonjs.org) specs, discussions on the Google Groups CommonJS lists 
  * (http://groups.google.com/group/commonjs), RequireJS 0.14.5 (James Burke, http://requirejs.org), 
  * FlyScript.js (copyright Kevin H. Smith, https://github.com/khs4473), BravoJS (copyright Wes Garland,
  * http://code.google.com/p/bravojs/), Pinf/Loader (copyright Christoph Dorn, https://github.com/pinf/loader-js)
- * and utility code of Ext Core / ExtJS 3.2.1. (copyright Sencha, http://www.sencha.com)
+ * and utility code of Ext Core 4 (copyright Sencha, http://www.sencha.com)
  *
  * For documentation how to use this: http://code.tolsma.net/apprequire
+ * @author Sander Tolsma <code@tolsma.net>
+ * @docauthor Sander Tolsma <code@tolsma.net>
  */
-
-/**
- * Bootstrap System definition
- */
+ 
 // define require, exports, module and window
 var require, exports, module, window;
 
 // define the Bootstrap System as a self starting function closure
 (function(env) {
 	var UNDEF,													// undefined constant for comparison functions
-		contextList = [],
 		
 		// default context config
 		defaultcfg = {
 			directories: {
 				lib: './lib'
 			},
+			location: './',
 			commonjsAPI: {},
 			modules: {},
 			debug: true,
@@ -64,15 +62,13 @@ var require, exports, module, window;
 					
 		// default commonjs API:
 		commonjsAPI = {
-			contextPlugins: [
-				"genericPackage"
-			],
 			loader: "scriptLoader",
 			loaderPlugins: [
 				"moduleTransport"
 			],
 			systemModules: [
-				"system"
+				"system",
+				"test"
 			]
 		},
 		system;
@@ -96,6 +92,15 @@ var require, exports, module, window;
 	}
 	
 	/**
+	 * Returns true if the passed value is a JavaScript Array, false otherwise.
+	 * @param {Mixed} target The target to test
+	 * @return {Boolean}
+	 */
+	function isArray(value) {
+		return Object.prototype.toString.apply(value) === '[object Array]';
+	}
+
+	/**
 	 * Cut the last term from a URI string
 	 * @param {string} uri The path string to cut the last term off.
 	 * @return {string} Path without last term
@@ -104,17 +109,6 @@ var require, exports, module, window;
 		uri = uri.split('/');
 		uri = uri.slice(0, uri.length-1);
 		return uri.join("/"); 
-	}
-	
-	/**
-	 * Get the last term from a URI string and return it
-	 * @param {string} uri The path string to cut the last term off.
-	 * @return {string} Last term
-	 */
-	function getLastTerm(uri) {
-		uri = uri.split('/');
-		uri = uri.slice(uri.length-1);
-		return uri[0];
 	}
 	
 	/********************************************************************************************
@@ -164,10 +158,13 @@ var require, exports, module, window;
 	 */
 	function bootstrapReady(api, modules){
 		for (var prop in api) {
-			if (!(api[prop] in modules)) {
+			if (isArray(api[prop])) {
+				if (!bootstrapReady(api[prop], modules))
+					// nope one of the deep modules is not declared yet
+					return false;
+			} else if (!(api[prop] in modules)) 
 				// nope this system modules is not declared yet 
 				return false;
-			}
 		}
 		// all required system modules are loaded
 		return true;
@@ -200,9 +197,6 @@ var require, exports, module, window;
 
 				// create context with current cfg, and the System Module list.
 				context = system.instantiate('Context', contextCfg);
-				
-				// save context for later use ??
-				contextList.push(context);
 				
 				// debug info ??
 				if (contextCfg.debug) {
