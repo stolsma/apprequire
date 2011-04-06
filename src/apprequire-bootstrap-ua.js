@@ -46,32 +46,49 @@ var require, exports, module, window;
 // define the Bootstrap System as a self starting function closure
 (function(env) {
 	var UNDEF,													// undefined constant for comparison functions
+		system,													// system singleton interface point
+		systemModules = {},										// declared system modules (loaders, transports and general modules)
 		
+	/********************************************************************************************
+	* Startup configs																			*
+	********************************************************************************************/
 		// default context config
 		defaultcfg = {
 			directories: {
 				lib: './lib'
 			},
 			location: './',
-			commonjsAPI: {},
-			modules: {},
+			system: {},
+			loaders: [],
+			modules: [],
 			debug: true,
 			timeout: 6000,
 			baseUrlMatch: /apprequire/i
 		},
 					
-		// default commonjs API:
-		commonjsAPI = {
-			loader: "scriptLoader",
-			loaderPlugins: [
-				"moduleTransport"
-			],
-			systemModules: [
-				"system",
-				"test"
-			]
+		// default system class names
+		systemcfg = {
+			context: "Context",
+			loaderBase: "LoaderBase",
+			moduleSystem: "ModuleSystem",
+			module: "Module",
+			store: "Store",
 		},
-		system;
+		
+		// default Loaders:
+		loaderscfg = [{
+			loader: "scriptLoader",
+			type: "http",
+			plugins: [
+				"moduleTransport"
+			]
+		}],
+		
+		// default modules
+		modulescfg = [
+			"system",
+			"test"
+		];
 		
 	/********************************************************************************************
 	* Utility functions																			*
@@ -120,7 +137,7 @@ var require, exports, module, window;
 	 * @param {string} baseUrlMatch RegExp definition to find this scriptfile.
 	 * @return {object} Object with defined context configuration parsed from the scripts context attribute
 	 */
-	function getContextConfig(document, baseUrlMatch){
+	function getContextConfig(document, baseUrlMatch) {
 		var scriptList,	script,	src, i, result;
 
 		// Get list of all <script> tags to check
@@ -149,100 +166,178 @@ var require, exports, module, window;
 		}
 		return result;
 	}
-
+	
 	/**
-	 * Checks if all the required CommonJS system API modules are loaded
-	 * @param {object} api Object with the config.commonjsAPI information.
-	 * @param {object} modules Object with the loaded CommonJS System modules.
-	 * @return {bool} True when all required modules are loaded false if not
+	 * Create a new CommonJS context
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 * @param {Array} modules Array of standard modules to add to the main Module System
+	 * @return {Context} The created context
 	 */
-	function bootstrapReady(api, modules){
-		for (var prop in api) {
-			if (isArray(api[prop])) {
-				if (!bootstrapReady(api[prop], modules))
-					// nope one of the deep modules is not declared yet
-					return false;
-			} else if (!(api[prop] in modules)) 
-				// nope this system modules is not declared yet 
+	function createNewContext(cfg, modules) {
+		modules = (modules || systemModules);
+		return system.instantiate(cfg.system.context, cfg, modules);
+	}
+	
+	/**
+	 * Setup the extra module environment by using the defined CommonJS system environment
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 */
+	function createExtraModuleEnv(cfg) {
+		var context;
+
+		// delete declare and addClass because only in use for bootstrap phase...
+		delete cfg.env.module.declare;
+		delete cfg.env.module.addClass;
+
+		// create context with current cfg, and the System Module list.
+		context = createNewContext(cfg, systemModules);
+			
+		// debug info ??
+		if (cfg.debug) {
+			cfg.env.module.debug = {
+				system: system,
+				context: context,
+				cfg: cfg
+			}
+		}
+	}
+	
+	/**
+	 * Check if all classes are available in the CommonJS system
+	 * @param {object} classes Object with name value pairs
+	 * @return {bool} True when all required classes are defined, false if not
+	 */
+	function systemReady(classes) {
+		for (var prop in classes) {
+			if (!system.exists(classes[prop])) 
+				return false
+		}
+		return true;
+	}
+	
+	/**
+	 * Check if all loader modules are available in the CommonJS system
+	 * @param {Array of objects} loaders Array of loader objects with loader name strings and a transports array
+	[{
+		loader: "loader1",
+		plugins: ["plugin1", "plugin2"]
+	},{
+		loader: "loader2",
+		plugins: ["plugin3"]
+	}]
+	 * @return {bool} True when all required modules are defined, false if not
+	 */
+	function loadersReady(loaders) {
+		var i1, i2, loader, plugin;
+		for (i1 = 0; loader = loaders[i1]; i1++) {
+			// does the loader itself exists?
+			if (!systemModules[loader.loader])
+				return false;
+			// check if all plugins exist.
+			if (!modulesReady(loader.plugins))
 				return false;
 		}
-		// all required system modules are loaded
+		// all required loader modules are loaded
 		return true;
+	}
+	
+	/**
+	 * Check if all system modules are available in the CommonJS system
+	 * @param {Array} mods Array of module name strings
+	 * @return {bool} True when all required modules are defined, false if not
+	 */
+	function modulesReady(mods) {
+		var prop;
+		for (prop in mods) {
+			if (!systemModules[mods[prop]]) 
+				return false
+		}
+		return true;
+	}
+	
+	/**
+	 * Checks if all the required CommonJS system classes and modules are loaded and if so configures the Extra Module Environment
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 * @return {bool} True when all required modules and classes are loaded and first context is defined, false if not
+	 */
+	function bootstrapReady(cfg) {
+		if (systemReady(cfg.system) && loadersReady(cfg.loaders) && modulesReady(cfg.modules)) { 
+			createExtraModuleEnv(cfg);
+			return true;
+		}
+		return false;
 	}
 
 	/**
-	 * Handles CommonJS system API module adding to the environment, only available in bootstrap phase.
+	 * Handles CommonJS module adding to the environment, only available in bootstrap phase.
 	 * Bootstrap phase is followed by Extra Module Environment Phase (EME Phase). Changeover to EME phase is 
-	 * accomplished when all modules defined in CommonjsAPI are 'loaded' via module.declare   
+	 * accomplished when all modules and classes are 'loaded' and first context is defined.   
+	 * @param {string} id ID of the module.
 	 * @param {array} dep Object with the modules dependency list.
 	 * @param {function} factoryFn Function to define the exports of this module.
-	 * @param {object} contextCfg Object with the configuration for the context to create.
+	 * @param {object} cfg Object with the configuration for the CommonJS system to create.
 	 */
-	function addModule(id, dep, factoryFn, contextCfg){
-		var modules = contextCfg.modules,
-			commonjsAPI = contextCfg.commonjsAPI,
-			context;
-		
+	function addModule(id, dep, factoryFn, cfg) {
 		if ((typeof id == 'string') && (id !== UNDEF)) {
 			// save this api information
-			modules[id] = {
+			systemModules[id] = {
 				dep: dep,
 				factoryFn: factoryFn
 			};
-			// check if all modules are now loaded. If true then startup first context
-			if (bootstrapReady(commonjsAPI, modules)){
-				// delete declare and addClass because only in use for bootstrap...
-				delete contextCfg.env.module.declare;
-				delete contextCfg.env.module.addClass;
-
-				// create context with current cfg, and the System Module list.
-				context = system.instantiate('Context', contextCfg);
-				
-				// debug info ??
-				if (contextCfg.debug) {
-					contextCfg.env.module.debug = {
-						system: system,
-						context: context,
-						cfg: contextCfg
-					}
-				}
-			}
+			// check if all modules and classes are now loaded. If true then startup first context
+			bootstrapReady(cfg);
 		} else {
 		// non CommonJS system API module is declared, throw error
 			throw new Error("Invalid bootstrap module declaration!!");
 		}
 	}
 	
-	function bootExtraModuleEnvironment(contextCfg){
-		contextCfg.modules.execute = function(id){
-			var exports = {};
-			// if this module exists then execute factoryFn
-			if (this[id]) {
-				mixin(exports, this[id].factoryFn.call(null, null, exports, null));
-				return exports;
-			} else 
-				throw new Error('(bootstrap.modules.execute) Module for given id doesnt exists!');
-			// return nothing
-			return UNDEF;
-		};
-		contextCfg.env.module = {
+	/**
+	 * Add Class to CommonJS system. First call to this function MUST give a CommonJS System. Continuing calls
+	 * 
+	 * @param {Object} cls Object with name and system or addClass function
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 */
+	function addClass(cls, cfg) {
+		if ((cls.name == 'System') && (system === UNDEF)) {
+			system = cls.system;
+			return;
+		} else if (system !== UNDEF) {
+			cls.addClass(system);
+			// check if all modules and classes are now loaded. If true then startup first context
+			bootstrapReady(cfg);
+		} else
+			throw new Error("Invalid bootstrap class declaration!! Class System is not yet defined!");
+	}
+	
+	/**
+	 * Creates the setup in the global environment to make it possible to reach the Extra Module Environment Phase
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 */
+	function bootstrap(cfg) {
+		// create global module and class declare functions for the Bootstrap phase. Those functions
+		// will be deleted when all required modules and classes are added/declared
+		cfg.env.module = {
 			declare: function(id, deb, factoryFn){
-				addModule(id, deb, factoryFn, contextCfg);
+				addModule(id, deb, factoryFn, cfg);
 			},
 			addClass: function(cls){
-				if (cls.name == 'System')
-					system = cls.system;
-				else
-					cls.addClass(system);
+				addClass(cls, cfg);
 			}
 		};
 	}
 	
-	/********************************************************************************************
-	* First boot code																			*
-	********************************************************************************************/
-	
-	function setupConfig(env, cfg){
+	/**
+	 * Creates a normalized cfg object from mixing cfg info defined in script tag and default cfg's
+	 * @param {Object} env The environment (in ua bootstrap this will be window...)
+	 * @return {Object} the normalized cfg object with all possible cfg items filled with correct settings
+	 */
+	function setupConfig(env){
+		// empty config object with only the environment declared
+		var cfg = {
+			env: env
+		};
+		
 		// check if environment is defined else throw
 		if (env === UNDEF) 
 			throw new Error("Invalid environment in setupConfig bootstrap! ");
@@ -254,7 +349,7 @@ var require, exports, module, window;
 		if (env.document !== UNDEF) 
 			mixin(cfg, getContextConfig(env.document, cfg.baseUrlMatch), true);
 		
-		// create location propertie if not already defined	
+		// create location property if not already defined	
 		mixin(cfg, {
 			location: ''
 		});
@@ -264,7 +359,9 @@ var require, exports, module, window;
 			cfg.location = cutLastTerm(env.location.href);
 		
 		// mixin not defined framework standard CommonJS Framework Systems
-		mixin(cfg.commonjsAPI, commonjsAPI);
+		mixin(cfg.system, systemcfg);
+		mixin(cfg.loaders, loaderscfg);
+		mixin(cfg.modules, modulescfg);
 		
 		// and return config
 		return cfg;
@@ -274,10 +371,10 @@ var require, exports, module, window;
 	* Bootstrap startup																			*
 	********************************************************************************************/
 	/**
-	 * Boot the whole commonjs extr amodule environment depending on given options. 
-	 * @param {object} env Description of the current environment
+	 * Boot into the commonjs bootstrap phase depending on given options. 
+	 * @param {object} env Description of the current environment, in this case window...
 	 */
-	bootExtraModuleEnvironment(setupConfig(env, {env: env}));
+	bootstrap(setupConfig(env));
 	
 	// end of selfstarting bootstrap closure
 })(window);

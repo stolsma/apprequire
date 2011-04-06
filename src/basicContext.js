@@ -36,138 +36,145 @@
  * and utility code of Ext Core 4 (copyright Sencha, http://www.sencha.com)
  *
  * For documentation how to use this: http://code.tolsma.net/apprequire
+ * @author Sander Tolsma <code@tolsma.net>
+ * @docauthor Sander Tolsma <code@tolsma.net>
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
 		system,													// system singleton definition in this private scope
 		
-		// CommonJS ID Types
-		CJS_TYPE_LOADER = 'loader',
-		
-	/********************************************************************************************
-	* Generic Context implemented as Class														*
-	********************************************************************************************/
+	/**
+	 * @class Context
+	 * Default CommonJS Context environment definition.
+	 */
 	ContextClass = {
 		/**
 		 * The Context Class Constructor
 		 * @constructor
-		 * @param {cfgObject} cfg The standard cfg object. For this class the following properties are important:
+		 * @param {cfgObject} cfg The standard cfg object.
+		 * @param {Array} modules Array of standard modules to add to the Core Module System
 		 */
-		constructor: function(cfg) {
-			var me = this;
+		constructor: function(cfg, modules) {
+			var me = this,
+				cfgSystem = cfg.system;
 			
 			// save the config
 			me.cfg = cfg;
-			// create a store for all the module subsystems that are to be created in this context
-			me.moduleSubs = system.instantiate('Store');
+			me.env = cfg.env;
+			me.msClass = cfgSystem.moduleSystem;
+			me.storeClass = cfgSystem.store;
+			
 			// create a store for loading resources
-			me.loading = system.instantiate('Store');
+			me.loading = system.instantiate(me.storeClass);
 			
-			// generate loaders and the plugins
-			me.startupLoader(cfg);
-												
-			// and create environment hooks
-			me.startupCMS(cfg);
-			
-			// main module given to startup with??
-			if (cfg.location && cfg.main) {
-				me.provide('commonjs.org', cfg.main, function contextConstructorInitLoadCB(){
-					 me.moduleSubs.get('commonjs.org').ms.require(cfg.main);
-				})
-			}
+			// create core module system
+			me.startupCMS(modules);
 		},
 		
 		/********************************************************************************************
 		* Context Startup Functions																	*
 		********************************************************************************************/
 		/**
-		 *
-		 * @param {cfgObject} cfg The standard cfg object. This function uses the following properties:
-		 * cfg.location
-		 * cfg.commonjsAPI
-		 * cfg.modules
+		 * Creates the core module system, adds the given standard modules and installs the loaders for the CMS
+		 * @param {Array} modules Array of standard modules to add to the main Module System
 		 */
-		startupCMS: function(cfg){
-			var env = cfg.env,
-				that = this,
+		startupCMS: function(modules) {
+			var me = this,
 				ms;
 			
 			// create the Main Module System
-			ms = system.instantiate('ModuleSystem', 'commonjs.org');
+			ms = system.instantiate(me.msClass, me.cfg);
 			// save the main Module System with other system info for later retrieval
-			this.moduleSubs.set('commonjs.org', {
-				ms: ms,
-				uri: cfg.location
-			});
+			me.setMS(ms, me.cfg.location);
 			
-			// extend cms API
-			ms.provide = function ContextProvide(deps, cb){
-				that.provide(this.uid, deps, cb);
+			// extend Module System API
+			ms.provide = function ContextProvide(deps, cb) {
+				me.provide(me.getMS(), deps, cb);
 			};
 			
 			// add default system modules to the main module system
-			this.addSystemModules(ms, cfg.commonjsAPI, cfg.modules);
+			me.addSystemModules(ms, modules);
 			
 			// create extra module environment require
-			env.require = function wrapperRequire(){
+			me.env.require = function wrapperRequire(){
 				return ms.require.apply(ms, arguments);
 			};
-		},
-		
-		/**
-		 *
-		 */
-		addSystemModules: function(ms, commonjsAPI, modules){
-			var i, id;
+			// create extra module environment module.provide
+			me.env.module.provide = function wrapperProvide(deps, cb){
+				me.provide(me.getMS(), deps, cb);
+			};
 			
-			for (i=0; id = commonjsAPI.systemModules[i]; i++){
-				ms.memoize(id, modules[id].deps, modules[id].factoryFn);				
+			// generate loaders and the plugins
+			me.startupLoaders(ms, this.cfg.loaders);
+												
+			// main module given to startup with??
+			if (me.cfg.location && me.cfg.main) {
+				me.provide(me.getMS(), me.cfg.main, function contextConstructorInitLoadCB(){
+					 me.getMS().ms.require(me.cfg.main);
+				})
 			}
 		},
 		
 		/**
-		 *
+		 * Add an array of module definitions to the given Module System
+		 * @param {ModuleSystem} ms the Module System to add the modules to
+		 * @param {Array} modules Array of modules to add to the Module System
 		 */
-		startupLoader: function(cfg){
-			var modules = cfg.modules,
-				commonjsAPI = cfg.commonjsAPI,
-				loader; 
-			
-			loader = modules.execute(commonjsAPI[CJS_TYPE_LOADER]);
-			// create the loader from the given CommonJS API modules
-			if (!loader || !(loader = loader.create(cfg))) throw new Error("No correct CommonJS Loader Layer declaration!!");
-			
-			// create loaderbase and add loader
-			this.loaderBase = system.instantiate('LoaderBase');
-			this.loaderBase.addLoader('http', loader);
+		addSystemModules: function(ms, modules){
+			var mod;
+			for (mod in modules){
+				ms.memoize(mod, modules[mod].deps, modules[mod].factoryFn);				
+			}
+		},
+		
+		/**
+		 * From an array of loader definitions create loaders and add to the given Module System
+		 * @param {ModuleSystem} ms the Module System to add the loaders to
+		 * @param {Array} modules Array of loader definitions to add to the Module System
+		 */
+		startupLoaders: function(ms, loaders){
+			var base, loader, loaderMod, i;
+			// create interface layer to keep track of multiple loaders
+			base = this.loaderBase = system.instantiate(this.cfg.system.loaderBase);
+			// add the defined loaders
+			for (i=0; loader = loaders[i]; i++) {
+				// create loaderbase and add loader
+				loaderMod = ms.require(loader.loader);
+				base.addLoader(loader.type, loaderMod.create(this.cfg, loader.plugins));
+			}
 		},
 		
 		/********************************************************************************************
 		* Context API Functions																		*
 		********************************************************************************************/
 		/**
-		 *
+		 * First load all dependencies if not available in given Module System and then call the given callback function
+		 * @param {Module System Descriptor Object} The Module System Descriptor Object of the Module System the dependencies are asked for
+		 * @param {Array/String} deps String or Array of Strings of dependency module IDs
+		 * @param {Function} cb Callback function to call when dependencies are loaded
 		 */
-		provide: function(uid, deps, cb){
-			var i, dep,
+		provide: function(msDescr, deps, cb){
+			var i, dep, depDescr
 				resources = [];
 				
 			// convert string to array
 			deps = (typeof deps == 'string') ? [deps] : deps;
 			
-			// run through all required dependencies
+			// run through all required dependencies and if needed create dependency descriptor
 			for (i=0; dep = deps[i]; i++) {
-				//normalize dependency by calling getMSId
-				dep = this.getMSId(uid, dep);
+				//normalize dependency by cloning
+				depDescr = system.getUtils().clone(msDescr);
+				// create url from uri and dependency id
+				depDescr.url = depDescr.uri + dep;
 				
 				// does this id already exists in the module system or is this resource already loading?
-				if ((!this.loading.exist(dep.uri + dep.id)) && (!dep.ms.isMemoized(dep.id))) {
+				if ((!this.loading.exist(depDescr.url)) && (!depDescr.ms.isMemoized(dep))) {
 					// create module system specific Loader API
-					dep.api = this.createAPI(dep.id, dep.uid);
+					depDescr.api = this.createAPI(dep, depDescr);
 					// add to loading list
-					this.loading.set(dep.uri + dep.id, dep);
+					this.loading.set(depDescr.url, depDescr);
 					// add normalized dependency to resource list
-					resources.push(dep);
+					resources.push(depDescr);
 				}
 			};
 			
@@ -180,7 +187,12 @@
 		},
 		
 		/**
-		 *
+		 * Returns Function called when one resource of the resourcelist created by provide is loaded. 
+		 * When all resources are loaded the Callback function will be called
+		 * @param {Array} resources Array of resource objects that are going to be loaded
+		 * @param {Function} cb Callback function to call when resources are loaded
+		 * @return {Function} Resource check callback function which accepts the resource object of the resource loaded and 
+		 * an array of arguments for the callback function
 		 */
 		provideCallback: function(resources, cb){
 			var i, res, 
@@ -189,18 +201,18 @@
 				
 			// generate fresh resourcelist	
 			for (i=0; res = resources[i]; i++){
-				reslist.push(res.uri + res.id)
+				reslist.push(res.url)
 			}
 			// return callback function
 			return function contextProvideCallback(resource, args){
 				var i, res;
 				
 				// ready loading this resource so remove from context global loading list
-				that.loading.remove(resource.uri + resource.id);
+				that.loading.remove(resource.url);
 				
 				// check if all given resources are recursively loaded
 				for (i=0; res = reslist[i]; i++){
-					if (res == resource.uri + resource.id)
+					if (res == resource.url)
 						break;
 				}
 				// if resource existed in list remove it
@@ -216,43 +228,35 @@
 		},
 		
 		/**
-		 *
+		 * Gets module system descriptor for this context, can be overridden in later child classes to extend with packages 
+		 * @return {Module System Descriptor Object} The retrieved Module System Descriptor Object
 		 */
 		getMS: function() {
+			return this.ms;
 		},
 		
 		/**
-		 *
+		 * Save the given module system in this context as a module system descriptor, can be overridden in later child classes to extend with packages
+		 * @param {ModuleSystem} ms The module system object to set
+		 * @param {String} uri The location of the modules of this Module System
+		 * @return {Module System Descriptor Object} The created Module System Descriptor Object
 		 */
-		setMS: function() {
-		},
-		
-		/**
-		 * Return all the relevant information from a given Module System identified with its uid
-		 * @param {string} uid The uid of the Module system information is requested from
-		 * @param {dep} dep
-		 * @return {object} An object with all relevant Module System information
-		 */
-		getMSId: function(uid, dep){
-			var ms = this.moduleSubs.get(uid);
-			return {
-				ms: ms.ms,
-				uid: uid,
-				uri: ms.uri,
-				id: dep
-			}
+		setMS: function(ms, uri) {
+			return this.ms = {
+				ms: ms,
+				uri: uri
+			};
 		},
 		
 		/**
 		 * Create an API object as defined in the Loader specs
 		 * @param {string} mId The standard ModuleID (resolved to the given Module System) to use 
-		 * @param {string} ms The module system id this API is requested for
+		 * @param {Module System Descriptor Object} msDescriptor The module system descriptor this API is requested for
 		 * @return {LoaderAPI Object} The API as defined by the Loader specs
 		 */
-		createAPI: function(mId, ms){
-			var ms = this.moduleSubs.get(ms).ms;
+		createAPI: function(mId, msDescriptor){
+			var ms = msDescriptor.ms;
 			return {
-				msuri: ms.uri,
 				deps: [],
 				memoize: function ContextAPIMemoize(id, deps, factoryFn){
 					// no given id then use requested id

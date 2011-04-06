@@ -111,9 +111,8 @@ module.declare('scriptLoader', [], function(require, exports, module){
 	/********************************************************************************************
 	* ScriptLoader implemented as Class															*
 	********************************************************************************************/
-	function ScriptLoader(cfg) {
-		var loaderPlugins, transport, plugin,
-			modules = cfg.modules;
+	function ScriptLoader(cfg, plugins) {
+		var transport, plugin;
 		
 		this.env = cfg.env;
 		this.testInteractive = !!cfg.env.ActiveXObject;				// test if IE for onload workaround... 
@@ -122,12 +121,10 @@ module.declare('scriptLoader', [], function(require, exports, module){
 		this.transports = [];
 		
 		// create the transports plugins
-		if ((loaderPlugins = cfg.commonjsAPI.loaderPlugins) !==UNDEF) {
-			for (var i=0; transport = loaderPlugins[i]; i++) {
-				plugin = modules.execute(transport);
-				if (!plugin || !(plugin = plugin.create(cfg, this))) throw new Error("No correct CommonJS loaderPlugin: " + transport + " declaration!!");
-				this.transports.push(plugin);
-			}
+		for (var i=0; transport = plugins[i]; i++) {
+			plugin = require(transport);
+			if (!plugin || !(plugin = plugin.create(cfg, this))) throw new Error("No correct CommonJS loaderPlugin: " + transport + " declaration!!");
+			this.transports.push(plugin);
 		}
 	}
 	
@@ -309,7 +306,7 @@ module.declare('scriptLoader', [], function(require, exports, module){
 	/********************************************************************************************
 	* Loader System API generation																*
 	********************************************************************************************/
-	exports.create = function(cfg){
-		return new ScriptLoader(cfg);
+	exports.create = function(cfg, plugins){
+		return new ScriptLoader(cfg, plugins);
 	};
 });

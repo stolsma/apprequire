@@ -46,32 +46,49 @@ var require, exports, module, window;
 // define the Bootstrap System as a self starting function closure
 (function(env) {
 	var UNDEF,													// undefined constant for comparison functions
+		system,													// system singleton interface point
+		systemModules = {},										// declared system modules (loaders, transports and general modules)
 		
+	/********************************************************************************************
+	* Startup configs																			*
+	********************************************************************************************/
 		// default context config
 		defaultcfg = {
 			directories: {
 				lib: './lib'
 			},
 			location: './',
-			commonjsAPI: {},
-			modules: {},
+			system: {},
+			loaders: [],
+			modules: [],
 			debug: true,
 			timeout: 6000,
 			baseUrlMatch: /apprequire/i
 		},
 					
-		// default commonjs API:
-		commonjsAPI = {
-			loader: "scriptLoader",
-			loaderPlugins: [
-				"moduleTransport"
-			],
-			systemModules: [
-				"system",
-				"test"
-			]
+		// default system class names
+		systemcfg = {
+			context: "Context",
+			loaderBase: "LoaderBase",
+			moduleSystem: "ModuleSystem",
+			module: "Module",
+			store: "Store",
 		},
-		system;
+		
+		// default Loaders:
+		loaderscfg = [{
+			loader: "scriptLoader",
+			type: "http",
+			plugins: [
+				"moduleTransport"
+			]
+		}],
+		
+		// default modules
+		modulescfg = [
+			"system",
+			"test"
+		];
 		
 	/********************************************************************************************
 	* Utility functions																			*
@@ -120,7 +137,7 @@ var require, exports, module, window;
 	 * @param {string} baseUrlMatch RegExp definition to find this scriptfile.
 	 * @return {object} Object with defined context configuration parsed from the scripts context attribute
 	 */
-	function getContextConfig(document, baseUrlMatch){
+	function getContextConfig(document, baseUrlMatch) {
 		var scriptList,	script,	src, i, result;
 
 		// Get list of all <script> tags to check
@@ -149,100 +166,178 @@ var require, exports, module, window;
 		}
 		return result;
 	}
-
+	
 	/**
-	 * Checks if all the required CommonJS system API modules are loaded
-	 * @param {object} api Object with the config.commonjsAPI information.
-	 * @param {object} modules Object with the loaded CommonJS System modules.
-	 * @return {bool} True when all required modules are loaded false if not
+	 * Create a new CommonJS context
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 * @param {Array} modules Array of standard modules to add to the main Module System
+	 * @return {Context} The created context
 	 */
-	function bootstrapReady(api, modules){
-		for (var prop in api) {
-			if (isArray(api[prop])) {
-				if (!bootstrapReady(api[prop], modules))
-					// nope one of the deep modules is not declared yet
-					return false;
-			} else if (!(api[prop] in modules)) 
-				// nope this system modules is not declared yet 
+	function createNewContext(cfg, modules) {
+		modules = (modules || systemModules);
+		return system.instantiate(cfg.system.context, cfg, modules);
+	}
+	
+	/**
+	 * Setup the extra module environment by using the defined CommonJS system environment
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 */
+	function createExtraModuleEnv(cfg) {
+		var context;
+
+		// delete declare and addClass because only in use for bootstrap phase...
+		delete cfg.env.module.declare;
+		delete cfg.env.module.addClass;
+
+		// create context with current cfg, and the System Module list.
+		context = createNewContext(cfg, systemModules);
+			
+		// debug info ??
+		if (cfg.debug) {
+			cfg.env.module.debug = {
+				system: system,
+				context: context,
+				cfg: cfg
+			}
+		}
+	}
+	
+	/**
+	 * Check if all classes are available in the CommonJS system
+	 * @param {object} classes Object with name value pairs
+	 * @return {bool} True when all required classes are defined, false if not
+	 */
+	function systemReady(classes) {
+		for (var prop in classes) {
+			if (!system.exists(classes[prop])) 
+				return false
+		}
+		return true;
+	}
+	
+	/**
+	 * Check if all loader modules are available in the CommonJS system
+	 * @param {Array of objects} loaders Array of loader objects with loader name strings and a transports array
+	[{
+		loader: "loader1",
+		plugins: ["plugin1", "plugin2"]
+	},{
+		loader: "loader2",
+		plugins: ["plugin3"]
+	}]
+	 * @return {bool} True when all required modules are defined, false if not
+	 */
+	function loadersReady(loaders) {
+		var i1, i2, loader, plugin;
+		for (i1 = 0; loader = loaders[i1]; i1++) {
+			// does the loader itself exists?
+			if (!systemModules[loader.loader])
+				return false;
+			// check if all plugins exist.
+			if (!modulesReady(loader.plugins))
 				return false;
 		}
-		// all required system modules are loaded
+		// all required loader modules are loaded
 		return true;
+	}
+	
+	/**
+	 * Check if all system modules are available in the CommonJS system
+	 * @param {Array} mods Array of module name strings
+	 * @return {bool} True when all required modules are defined, false if not
+	 */
+	function modulesReady(mods) {
+		var prop;
+		for (prop in mods) {
+			if (!systemModules[mods[prop]]) 
+				return false
+		}
+		return true;
+	}
+	
+	/**
+	 * Checks if all the required CommonJS system classes and modules are loaded and if so configures the Extra Module Environment
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 * @return {bool} True when all required modules and classes are loaded and first context is defined, false if not
+	 */
+	function bootstrapReady(cfg) {
+		if (systemReady(cfg.system) && loadersReady(cfg.loaders) && modulesReady(cfg.modules)) { 
+			createExtraModuleEnv(cfg);
+			return true;
+		}
+		return false;
 	}
 
 	/**
-	 * Handles CommonJS system API module adding to the environment, only available in bootstrap phase.
+	 * Handles CommonJS module adding to the environment, only available in bootstrap phase.
 	 * Bootstrap phase is followed by Extra Module Environment Phase (EME Phase). Changeover to EME phase is 
-	 * accomplished when all modules defined in CommonjsAPI are 'loaded' via module.declare   
+	 * accomplished when all modules and classes are 'loaded' and first context is defined.   
+	 * @param {string} id ID of the module.
 	 * @param {array} dep Object with the modules dependency list.
 	 * @param {function} factoryFn Function to define the exports of this module.
-	 * @param {object} contextCfg Object with the configuration for the context to create.
+	 * @param {object} cfg Object with the configuration for the CommonJS system to create.
 	 */
-	function addModule(id, dep, factoryFn, contextCfg){
-		var modules = contextCfg.modules,
-			commonjsAPI = contextCfg.commonjsAPI,
-			context;
-		
+	function addModule(id, dep, factoryFn, cfg) {
 		if ((typeof id == 'string') && (id !== UNDEF)) {
 			// save this api information
-			modules[id] = {
+			systemModules[id] = {
 				dep: dep,
 				factoryFn: factoryFn
 			};
-			// check if all modules are now loaded. If true then startup first context
-			if (bootstrapReady(commonjsAPI, modules)){
-				// delete declare and addClass because only in use for bootstrap...
-				delete contextCfg.env.module.declare;
-				delete contextCfg.env.module.addClass;
-
-				// create context with current cfg, and the System Module list.
-				context = system.instantiate('Context', contextCfg);
-				
-				// debug info ??
-				if (contextCfg.debug) {
-					contextCfg.env.module.debug = {
-						system: system,
-						context: context,
-						cfg: contextCfg
-					}
-				}
-			}
+			// check if all modules and classes are now loaded. If true then startup first context
+			bootstrapReady(cfg);
 		} else {
 		// non CommonJS system API module is declared, throw error
 			throw new Error("Invalid bootstrap module declaration!!");
 		}
 	}
 	
-	function bootExtraModuleEnvironment(contextCfg){
-		contextCfg.modules.execute = function(id){
-			var exports = {};
-			// if this module exists then execute factoryFn
-			if (this[id]) {
-				mixin(exports, this[id].factoryFn.call(null, null, exports, null));
-				return exports;
-			} else 
-				throw new Error('(bootstrap.modules.execute) Module for given id doesnt exists!');
-			// return nothing
-			return UNDEF;
-		};
-		contextCfg.env.module = {
+	/**
+	 * Add Class to CommonJS system. First call to this function MUST give a CommonJS System. Continuing calls
+	 * 
+	 * @param {Object} cls Object with name and system or addClass function
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 */
+	function addClass(cls, cfg) {
+		if ((cls.name == 'System') && (system === UNDEF)) {
+			system = cls.system;
+			return;
+		} else if (system !== UNDEF) {
+			cls.addClass(system);
+			// check if all modules and classes are now loaded. If true then startup first context
+			bootstrapReady(cfg);
+		} else
+			throw new Error("Invalid bootstrap class declaration!! Class System is not yet defined!");
+	}
+	
+	/**
+	 * Creates the setup in the global environment to make it possible to reach the Extra Module Environment Phase
+	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+	 */
+	function bootstrap(cfg) {
+		// create global module and class declare functions for the Bootstrap phase. Those functions
+		// will be deleted when all required modules and classes are added/declared
+		cfg.env.module = {
 			declare: function(id, deb, factoryFn){
-				addModule(id, deb, factoryFn, contextCfg);
+				addModule(id, deb, factoryFn, cfg);
 			},
 			addClass: function(cls){
-				if (cls.name == 'System')
-					system = cls.system;
-				else
-					cls.addClass(system);
+				addClass(cls, cfg);
 			}
 		};
 	}
 	
-	/********************************************************************************************
-	* First boot code																			*
-	********************************************************************************************/
-	
-	function setupConfig(env, cfg){
+	/**
+	 * Creates a normalized cfg object from mixing cfg info defined in script tag and default cfg's
+	 * @param {Object} env The environment (in ua bootstrap this will be window...)
+	 * @return {Object} the normalized cfg object with all possible cfg items filled with correct settings
+	 */
+	function setupConfig(env){
+		// empty config object with only the environment declared
+		var cfg = {
+			env: env
+		};
+		
 		// check if environment is defined else throw
 		if (env === UNDEF) 
 			throw new Error("Invalid environment in setupConfig bootstrap! ");
@@ -254,7 +349,7 @@ var require, exports, module, window;
 		if (env.document !== UNDEF) 
 			mixin(cfg, getContextConfig(env.document, cfg.baseUrlMatch), true);
 		
-		// create location propertie if not already defined	
+		// create location property if not already defined	
 		mixin(cfg, {
 			location: ''
 		});
@@ -264,7 +359,9 @@ var require, exports, module, window;
 			cfg.location = cutLastTerm(env.location.href);
 		
 		// mixin not defined framework standard CommonJS Framework Systems
-		mixin(cfg.commonjsAPI, commonjsAPI);
+		mixin(cfg.system, systemcfg);
+		mixin(cfg.loaders, loaderscfg);
+		mixin(cfg.modules, modulescfg);
 		
 		// and return config
 		return cfg;
@@ -274,10 +371,10 @@ var require, exports, module, window;
 	* Bootstrap startup																			*
 	********************************************************************************************/
 	/**
-	 * Boot the whole commonjs extr amodule environment depending on given options. 
-	 * @param {object} env Description of the current environment
+	 * Boot into the commonjs bootstrap phase depending on given options. 
+	 * @param {object} env Description of the current environment, in this case window...
 	 */
-	bootExtraModuleEnvironment(setupConfig(env, {env: env}));
+	bootstrap(setupConfig(env));
 	
 	// end of selfstarting bootstrap closure
 })(window);
@@ -328,13 +425,14 @@ var require, exports, module, window;
 		objEscStr = '_',										// Object property escape string
 		Base,													// Base class... All other classes created with system functions inherit from this class
 		system = {},											// system singleton definition in this private scope
+		utils = {},												// utils singleton definition in this private scope
 		objectPrototype = Object.prototype,
 		enumerables = true,
 		enumerablesTest = { toString: 1 },
 		i;
 		
 	/********************************************************************************************
-	* System Singleton methods definition and system env sniffing								*
+	* Utils Singleton methods definition 														*
 	********************************************************************************************/
 	for (i in enumerablesTest) {
 		enumerables = null;
@@ -346,28 +444,28 @@ var require, exports, module, window;
 	}
 
 	/**
-	 * @class System
-	 * AppRequire core utilities and functions.
+	 * @class Utils
+	 * AppRequire utility functions.
 	 * @singleton
 	 */
 	/**
-	 * Put it into system namespace so that we can reuse outside this
+	 * Put it into utils namespace so that we can reuse outside this closure
 	 * @type Array
 	 */
-	system.enumerables = enumerables;
+	utils.enumerables = enumerables;
 		
 	/**
 	 * Copies all the properties of config to the specified object.
 	 * IMPORTANT: Note that it doesn't take care of recursive merging and cloning without referencing the original objects / arrays
-	 * Use system.merge instead if you need that.
+	 * Use utils.merge instead if you need that.
 	 * @param {Object} object The receiver of the properties
 	 * @param {Object} config The source of the properties
 	 * @param {Object} defaults A different object that will also be applied for default values
 	 * @return {Object} returns obj
 	 */
-	system.apply = function(object, config, defaults) {
+	utils.apply = function(object, config, defaults) {
 		if (defaults) {
-			system.apply(object, defaults);
+			utils.apply(object, defaults);
 		}
 
 		if (object && config && typeof config === 'object') {
@@ -393,7 +491,7 @@ var require, exports, module, window;
 	 * A full set of static methods to do type checking
 	 * @ignore
 	 */
-	system.apply(system, {
+	utils.apply(utils, {
 		/**
 		 * Returns true if the passed value is empty. The value is deemed to be empty if it is:
 		 * <ul>
@@ -407,7 +505,7 @@ var require, exports, module, window;
 		 * @return {Boolean}
 		 */
 		isEmpty: function(value, allowBlank) {
-			return (value === null) || (value === undefined) || ((system.isArray(value) && !value.length)) || (!allowBlank ? value === '' : false);
+			return (value === null) || (value === undefined) || ((utils.isArray(value) && !value.length)) || (!allowBlank ? value === '' : false);
 		},
 
 		/**
@@ -443,7 +541,7 @@ var require, exports, module, window;
 		 * @return {Boolean}
 		 */
 		isPrimitive: function(value) {
-			return system.isString(value) || system.isNumber(value) || system.isBoolean(value);
+			return utils.isString(value) || utils.isNumber(value) || utils.isBoolean(value);
 		},
 
 		/**
@@ -519,7 +617,7 @@ var require, exports, module, window;
 				return false;
 			}
 			//check for array or arguments
-			if (system.isArray(value) || value.callee) {
+			if (utils.isArray(value) || value.callee) {
 				return true;
 			}
 			//check for node list type
@@ -529,7 +627,7 @@ var require, exports, module, window;
 
 			//NodeList has an item and length property
 			//IXMLDOMNodeList has nextNode method, needs to be checked first.
-			return ((typeof value.nextNode !== 'undefined' || value.item) && system.isNumber(value.length)) || false;
+			return ((typeof value.nextNode !== 'undefined' || value.item) && utils.isNumber(value.length)) || false;
 		}
 	});
 	
@@ -537,7 +635,7 @@ var require, exports, module, window;
 	 * A full set of static methods to do variable handling
 	 * @ignore
 	 */
-	system.apply(system, {
+	utils.apply(utils, {
 		/**
 		 * Clone almost any type of variable including array, object and Date without keeping the old reference
 		 * @param {Mixed} item The variable to clone
@@ -556,21 +654,21 @@ var require, exports, module, window;
 			var i, j, k, clone, key;
 
 			// Array
-			if (system.isArray(item)) {
+			if (utils.isArray(item)) {
 				i = item.length;
 
 				clone = new Array(i);
 
 				while (i--) {
-					clone[i] = system.clone(item[i]);
+					clone[i] = utils.clone(item[i]);
 				}
 			}
 			// Object
-			else if (system.isObject(item) && item.constructor === Object) {
+			else if (utils.isObject(item) && item.constructor === Object) {
 				clone = {};
 
 				for (key in item) {
-					clone[key] = system.clone(item[key]);
+					clone[key] = utils.clone(item[key]);
 				}
 
 				if (enumerables) {
@@ -590,19 +688,19 @@ var require, exports, module, window;
 		 * @return {Object} merged The object that is created as a result of merging all the objects passed in.
 		 */
 		merge: function(source, key, value) {
-			if (system.isString(key)) {
-				if (system.isObject(value) && system.isObject(source[key])) {
+			if (utils.isString(key)) {
+				if (utils.isObject(value) && utils.isObject(source[key])) {
 					if (value.constructor === Object) {
-						system.merge(source[key], value);
+						utils.merge(source[key], value);
 					} else {
 						source[key] = value;
 					}
 				}
-				else if (system.isObject(value) && value.constructor !== Object){
+				else if (utils.isObject(value) && value.constructor !== Object){
 					source[key] = value;
 				}
 				else {
-					source[key] = system.clone(value);
+					source[key] = utils.clone(value);
 				}
 	
 				return source;
@@ -616,7 +714,7 @@ var require, exports, module, window;
 				obj = arguments[i];
 				for (prop in obj) {
 					if (obj.hasOwnProperty(prop)) {
-						system.merge(source, prop, obj[prop]);
+						utils.merge(source, prop, obj[prop]);
 					}
 				}
 			}
@@ -658,11 +756,11 @@ var require, exports, module, window;
 		 * @return {Array} array
 		 */
 		from: function(value) {
-			if (system.isIterable(value)) {
-				return system.toArray(value);
+			if (utils.isIterable(value)) {
+				return utils.toArray(value);
 			}
 
-			if (system.isDefined(value) && value !== null) {
+			if (utils.isDefined(value) && value !== null) {
 				return [value];
 			}
 
@@ -714,9 +812,9 @@ var require, exports, module, window;
 						}
 					}
 	
-					if (system.enumerables) {
-						for (i = system.enumerables.length; i--;) {
-							k = system.enumerables[i];
+					if (utils.enumerables) {
+						for (i = utils.enumerables.length; i--;) {
+							k = utils.enumerables[i];
 							if (a.hasOwnProperty(k)) {
 								fn.call(this, k, a[k]);
 							}
@@ -753,7 +851,7 @@ var require, exports, module, window;
 					callArgs = Array.prototype.slice.call(arguments, 0);
 					callArgs = callArgs.concat(args);
 				}
-				else if (system.isNumber(appendArgs)) {
+				else if (utils.isNumber(appendArgs)) {
 					callArgs = Array.prototype.slice.call(arguments, 0); // copy arguments first
 					applyArgs = [appendArgs, 0].concat(args); // create method call params
 					Array.prototype.splice.apply(callArgs, applyArgs); // splice them in
@@ -785,21 +883,29 @@ var require, exports, module, window;
 		 */
 		pass: function(fn, args, scope) {
 			if (args) {
-				args = system.from(args);
+				args = utils.from(args);
 			}
 	
 			return function() {
-				return fn.apply(scope, args.concat(system.toArray(arguments)));
+				return fn.apply(scope, args.concat(utils.toArray(arguments)));
 			};
 		}
 		
 	});
 	
+	/********************************************************************************************
+	* System Singleton methods definition 														*
+	********************************************************************************************/
+	/**
+	 * @class System
+	 * AppRequire's CommonJS System environment functions.
+	 * @singleton
+	 */
 	/**
 	 * A full set of methods to do CommonJS class inheritance
 	 * @ignore
 	 */
-	system.apply(system, {
+	utils.apply(system, {
 		/**
 		 * Classes repository
 		 * @property
@@ -820,7 +926,7 @@ var require, exports, module, window;
 				tmp = function(){};
 			
 			// check if superclass is string else use 'Base' as superclass
-			if (!system.isString(superclass)) { 
+			if (!utils.isString(superclass)) { 
 				overrides = superclass;
 				superclass = 'Base';
 			};
@@ -845,7 +951,7 @@ var require, exports, module, window;
 		 * @return {Base} The instantiated class.
 		 */
 		instantiate: function() {
-			var args = system.toArray(arguments),
+			var args = utils.toArray(arguments),
 				name = args.shift(),
 				temp = function() {},
 				cls, constructor, instanceCls;
@@ -864,6 +970,15 @@ var require, exports, module, window;
 			instanceCls.prototype.constructor = instanceCls;
 
 			return new instanceCls();
+		},
+		
+		/**
+		 * Does the class with the requested name exist in the class table
+		 * @param {String} name The name of the class
+		 * @return {Boolean} True if the class exists, false if not.
+		 */
+		exists: function(name) {
+			return !!(system.classes[objEscStr + name]);
 		},
 
 		/**
@@ -929,6 +1044,18 @@ var require, exports, module, window;
 			
 			// and return the new class
 			return cls;
+		},
+		
+		/**
+		 *
+		 * @return {Object} Object with all utils functions
+		 */
+		getUtils: function() {
+			var result = {};
+			// copy util functions to new object to create save environment 
+			utils.apply(result, utils);
+			// and give new utils object back
+			return result;
 		}
 	});
 	
@@ -1002,14 +1129,14 @@ var require, exports, module, window;
 	};
 	
 	// These static Base properties will be copied to every newly created class
-	system.apply(Base, {
+	utils.apply(Base, {
 		/**
 		 * @private
 		 */
 		ownMethod: function(name, fn) {
 			var originalFn, className;
 
-			if (fn === system.emptyFn) {
+			if (fn === utils.emptyFn) {
 				this.prototype[name] = fn;
 				return;
 			}
@@ -1051,11 +1178,11 @@ var require, exports, module, window;
 		 * @param {Mixed} value See {@link Ext.Function#flexSetter flexSetter}
 		 * @markdown
 		 */
-		extend: system.flexSetter(function(name, value) {
-			if (system.isObject(this.prototype[name]) && system.isObject(value)) {
-				system.merge(this.prototype[name], value);
+		extend: utils.flexSetter(function(name, value) {
+			if (utils.isObject(this.prototype[name]) && utils.isObject(value)) {
+				utils.merge(this.prototype[name], value);
 			}
-			else if (system.isFunction(value)) {
+			else if (utils.isFunction(value)) {
 				this.ownMethod(name, value);
 			}
 			else {
@@ -1073,12 +1200,12 @@ var require, exports, module, window;
 		 * @param {Mixed} value See {@link Ext.Function#flexSetter flexSetter}
 		 * @markdown
 		 */
-		override: system.flexSetter(function(name, value) {
-			if (system.isObject(this.prototype[name]) && system.isObject(value)) {
-				system.merge(this.prototype[name], value);
+		override: utils.flexSetter(function(name, value) {
+			if (utils.isObject(this.prototype[name]) && utils.isObject(value)) {
+				utils.merge(this.prototype[name], value);
 			}
-			else if (system.isFunction(value)) {
-				if (system.isFunction(this.prototype[name])) {
+			else if (utils.isFunction(value)) {
+				if (utils.isFunction(this.prototype[name])) {
 					var previous = this.prototype[name];
 					this.ownMethod(name, value);
 					this.prototype[name].$previous = previous;
@@ -1286,11 +1413,11 @@ var require, exports, module, window;
 		 * Module class definition
 		 * @param {string} id The global id of this Module
 		 */
-		constructor: function(id, deps, factoryFn, cms) {
+		constructor: function(id, deps, factoryFn, ms) {
 			this.id = id;																// The full top level id of this module in this system
 			this.deps = deps;															// The module dependencies (The full top level id's)
 			this.factoryFn = factoryFn;													// Factory Function
-			this.cms = cms;																// The core module system this module is defined in
+			this.ms = ms;																// The module system this module is defined in
 			
 			this.exports = {};															// The exports object for this module
 			this.module = null;															// The module variable for the factory function
@@ -1304,10 +1431,10 @@ var require, exports, module, window;
 		 */
 		require: function(id) {
 			// resolve id to current environment
-			id = (id === '') ? id : this.cms.resolveId(this.id, id);
+			id = (id === '') ? id : this.ms.resolveId(this.id, id);
 			
 			// get requested module exports
-			var exports = this.cms.require(id);
+			var exports = this.ms.require(id);
 			if (!exports) {
 				// module doesn't exist so throw error
 				throw "Module: " + id + " doesn't exist!!";
@@ -1330,11 +1457,11 @@ var require, exports, module, window;
 			// normalize dependancy ids relative to the module requiring it
 			for (var i=0; deps[i]; i++) {
 				// resolve given dependency and save for load
-				lDeps.push(this.cms.resolveId(this.id, deps[i]));
+				lDeps.push(this.ms.resolveId(this.id, deps[i]));
 			};
 			
 			// Call Core Module System to load the requested modules and if ready call the callback function
-			this.cms.provide(lDeps, cb)
+			this.ms.provide(lDeps, cb)
 			
 			// return undefined at this moment, standard is not clear about this.
 			return UNDEF;
@@ -1351,7 +1478,7 @@ var require, exports, module, window;
 				// need reference to module object with id and uri of this module
 				// do mixin of result and this.exports
 				this.state = READY;	// set to true before initialization call because module can request itself.. (circular dep problems) 
-				system.mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
+				system.getUtils().mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
 			}
 			
 			// if READY then return this module exports else return null 
@@ -1385,7 +1512,7 @@ var require, exports, module, window;
 			if (!this.module) {
 				// else fill new module
 				this.module = {
-					id: this.cms.id(this.id),
+					id: this.ms.id(this.id),
 				}
 			}
 			// return the module
@@ -1450,31 +1577,35 @@ var require, exports, module, window;
  * and utility code of Ext Core 4 (copyright Sencha, http://www.sencha.com)
  *
  * For documentation how to use this: http://code.tolsma.net/apprequire
+ * @author Sander Tolsma <code@tolsma.net>
+ * @docauthor Sander Tolsma <code@tolsma.net>
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
 		system,													// system singleton definition in this private scope
 	
-	/********************************************************************************************
-	* Module System implemented as Class														*
-	********************************************************************************************/
+	/**
+	 * @class ModuleSystem
+	 * Default CommonJS Module System definition.
+	 */
 	ModuleSystemClass = {
 		/**
-		 * @property uid
-		 */
-		/**
+		 * Store of the defined modules for this Module System
 		 * @property store
+		 * @type Store
 		 */
 		/**
 		 * Module System class definition
 		 * @constructor
-		 * @param {string} uid The uid of this module system
+		 * @param {cfgObject} cfg The standard cfg object.
 		 */
-		constructor: function(uid) {
-			// save the uri for this module system
-			this.uid = uid;
+		constructor: function(cfg) {
+			var me = this;
+			
+			// Classname for modules
+			me.mClass = cfg.system.module;
 			// create the module store for this module system
-			this.store = system.instantiate('Store');
+			me.store = system.instantiate(cfg.system.store);
 		},
 
 		/**
@@ -1494,7 +1625,7 @@ var require, exports, module, window;
 		},
 		
 		/**
-		 * API hook to create a module in this systems modules list
+		 * API hook to create a module in this Module System
 		 * @param {string} id The full top level id of the module in this module system.
 		 * @param {array} deps Array of full top level dependency id's in this module system.
 		 * @param {function} factoryFn The factory function of the module.
@@ -1503,7 +1634,7 @@ var require, exports, module, window;
 		memoize: function MSMemoize(id, deps, factoryFn){
 			// create Module Instance and save in module store if not already exists
 			if (!this.store.exist(id)) {
-				this.store.set(id, system.instantiate('Module', id, deps, factoryFn, this));
+				this.store.set(id, system.instantiate(this.mClass, id, deps, factoryFn, this));
 				return true;
 			}
 			
@@ -1511,13 +1642,17 @@ var require, exports, module, window;
 			return false;
 		},
 		
-		// API hook
+		/**
+		 * API hook to check if a module exists in this system
+		 * @param {string} id The full top level id of the module in this module system.
+		 * @return {bool} True if module with id exists, false if module with id doesn't exists
+		 */
 		isMemoized: function MSIsMemoized(id){
 			return this.store.exist(id);
 		},
 		
 		/**
-		 * API hook for for higher layers to provide not available modules in this system
+		 * API hook to provide not available modules in this system
 		 * @param {array] deps The full top level module id's that need to be INIT state before cb is called
 		 * @param {function} cb Callback function called when all given deps are in INIT state
 		 */
@@ -1527,7 +1662,7 @@ var require, exports, module, window;
 		},
 		
 		/**
-		 * API hook to return the exports of the main module of the root system
+		 * API hook to return the exports of the main module of the Main Module System
 		 * @param {string} id The full top level id of the module who wants to know its context main module exports
 		 * @return {exports} The exports of the context main module 
 		 */
@@ -1640,138 +1775,145 @@ var require, exports, module, window;
  * and utility code of Ext Core 4 (copyright Sencha, http://www.sencha.com)
  *
  * For documentation how to use this: http://code.tolsma.net/apprequire
+ * @author Sander Tolsma <code@tolsma.net>
+ * @docauthor Sander Tolsma <code@tolsma.net>
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
 		system,													// system singleton definition in this private scope
 		
-		// CommonJS ID Types
-		CJS_TYPE_LOADER = 'loader',
-		
-	/********************************************************************************************
-	* Generic Context implemented as Class														*
-	********************************************************************************************/
+	/**
+	 * @class Context
+	 * Default CommonJS Context environment definition.
+	 */
 	ContextClass = {
 		/**
 		 * The Context Class Constructor
 		 * @constructor
-		 * @param {cfgObject} cfg The standard cfg object. For this class the following properties are important:
+		 * @param {cfgObject} cfg The standard cfg object.
+		 * @param {Array} modules Array of standard modules to add to the Core Module System
 		 */
-		constructor: function(cfg) {
-			var me = this;
+		constructor: function(cfg, modules) {
+			var me = this,
+				cfgSystem = cfg.system;
 			
 			// save the config
 			me.cfg = cfg;
-			// create a store for all the module subsystems that are to be created in this context
-			me.moduleSubs = system.instantiate('Store');
+			me.env = cfg.env;
+			me.msClass = cfgSystem.moduleSystem;
+			me.storeClass = cfgSystem.store;
+			
 			// create a store for loading resources
-			me.loading = system.instantiate('Store');
+			me.loading = system.instantiate(me.storeClass);
 			
-			// generate loaders and the plugins
-			me.startupLoader(cfg);
-												
-			// and create environment hooks
-			me.startupCMS(cfg);
-			
-			// main module given to startup with??
-			if (cfg.location && cfg.main) {
-				me.provide('commonjs.org', cfg.main, function contextConstructorInitLoadCB(){
-					 me.moduleSubs.get('commonjs.org').ms.require(cfg.main);
-				})
-			}
+			// create core module system
+			me.startupCMS(modules);
 		},
 		
 		/********************************************************************************************
 		* Context Startup Functions																	*
 		********************************************************************************************/
 		/**
-		 *
-		 * @param {cfgObject} cfg The standard cfg object. This function uses the following properties:
-		 * cfg.location
-		 * cfg.commonjsAPI
-		 * cfg.modules
+		 * Creates the core module system, adds the given standard modules and installs the loaders for the CMS
+		 * @param {Array} modules Array of standard modules to add to the main Module System
 		 */
-		startupCMS: function(cfg){
-			var env = cfg.env,
-				that = this,
+		startupCMS: function(modules) {
+			var me = this,
 				ms;
 			
 			// create the Main Module System
-			ms = system.instantiate('ModuleSystem', 'commonjs.org');
+			ms = system.instantiate(me.msClass, me.cfg);
 			// save the main Module System with other system info for later retrieval
-			this.moduleSubs.set('commonjs.org', {
-				ms: ms,
-				uri: cfg.location
-			});
+			me.setMS(ms, me.cfg.location);
 			
-			// extend cms API
-			ms.provide = function ContextProvide(deps, cb){
-				that.provide(this.uid, deps, cb);
+			// extend Module System API
+			ms.provide = function ContextProvide(deps, cb) {
+				me.provide(me.getMS(), deps, cb);
 			};
 			
 			// add default system modules to the main module system
-			this.addSystemModules(ms, cfg.commonjsAPI, cfg.modules);
+			me.addSystemModules(ms, modules);
 			
 			// create extra module environment require
-			env.require = function wrapperRequire(){
+			me.env.require = function wrapperRequire(){
 				return ms.require.apply(ms, arguments);
 			};
-		},
-		
-		/**
-		 *
-		 */
-		addSystemModules: function(ms, commonjsAPI, modules){
-			var i, id;
+			// create extra module environment module.provide
+			me.env.module.provide = function wrapperProvide(deps, cb){
+				me.provide(me.getMS(), deps, cb);
+			};
 			
-			for (i=0; id = commonjsAPI.systemModules[i]; i++){
-				ms.memoize(id, modules[id].deps, modules[id].factoryFn);				
+			// generate loaders and the plugins
+			me.startupLoaders(ms, this.cfg.loaders);
+												
+			// main module given to startup with??
+			if (me.cfg.location && me.cfg.main) {
+				me.provide(me.getMS(), me.cfg.main, function contextConstructorInitLoadCB(){
+					 me.getMS().ms.require(me.cfg.main);
+				})
 			}
 		},
 		
 		/**
-		 *
+		 * Add an array of module definitions to the given Module System
+		 * @param {ModuleSystem} ms the Module System to add the modules to
+		 * @param {Array} modules Array of modules to add to the Module System
 		 */
-		startupLoader: function(cfg){
-			var modules = cfg.modules,
-				commonjsAPI = cfg.commonjsAPI,
-				loader; 
-			
-			loader = modules.execute(commonjsAPI[CJS_TYPE_LOADER]);
-			// create the loader from the given CommonJS API modules
-			if (!loader || !(loader = loader.create(cfg))) throw new Error("No correct CommonJS Loader Layer declaration!!");
-			
-			// create loaderbase and add loader
-			this.loaderBase = system.instantiate('LoaderBase');
-			this.loaderBase.addLoader('http', loader);
+		addSystemModules: function(ms, modules){
+			var mod;
+			for (mod in modules){
+				ms.memoize(mod, modules[mod].deps, modules[mod].factoryFn);				
+			}
+		},
+		
+		/**
+		 * From an array of loader definitions create loaders and add to the given Module System
+		 * @param {ModuleSystem} ms the Module System to add the loaders to
+		 * @param {Array} modules Array of loader definitions to add to the Module System
+		 */
+		startupLoaders: function(ms, loaders){
+			var base, loader, loaderMod, i;
+			// create interface layer to keep track of multiple loaders
+			base = this.loaderBase = system.instantiate(this.cfg.system.loaderBase);
+			// add the defined loaders
+			for (i=0; loader = loaders[i]; i++) {
+				// create loaderbase and add loader
+				loaderMod = ms.require(loader.loader);
+				base.addLoader(loader.type, loaderMod.create(this.cfg, loader.plugins));
+			}
 		},
 		
 		/********************************************************************************************
 		* Context API Functions																		*
 		********************************************************************************************/
 		/**
-		 *
+		 * First load all dependencies if not available in given Module System and then call the given callback function
+		 * @param {Module System Descriptor Object} The Module System Descriptor Object of the Module System the dependencies are asked for
+		 * @param {Array/String} deps String or Array of Strings of dependency module IDs
+		 * @param {Function} cb Callback function to call when dependencies are loaded
 		 */
-		provide: function(uid, deps, cb){
-			var i, dep,
+		provide: function(msDescr, deps, cb){
+			var i, dep, depDescr
 				resources = [];
 				
 			// convert string to array
 			deps = (typeof deps == 'string') ? [deps] : deps;
 			
-			// run through all required dependencies
+			// run through all required dependencies and if needed create dependency descriptor
 			for (i=0; dep = deps[i]; i++) {
-				//normalize dependency by calling getMSId
-				dep = this.getMSId(uid, dep);
+				//normalize dependency by cloning
+				depDescr = system.getUtils().clone(msDescr);
+				// create url from uri and dependency id
+				depDescr.url = depDescr.uri + dep;
 				
 				// does this id already exists in the module system or is this resource already loading?
-				if ((!this.loading.exist(dep.uri + dep.id)) && (!dep.ms.isMemoized(dep.id))) {
+				if ((!this.loading.exist(depDescr.url)) && (!depDescr.ms.isMemoized(dep))) {
 					// create module system specific Loader API
-					dep.api = this.createAPI(dep.id, dep.uid);
+					depDescr.api = this.createAPI(dep, depDescr);
 					// add to loading list
-					this.loading.set(dep.uri + dep.id, dep);
+					this.loading.set(depDescr.url, depDescr);
 					// add normalized dependency to resource list
-					resources.push(dep);
+					resources.push(depDescr);
 				}
 			};
 			
@@ -1784,7 +1926,12 @@ var require, exports, module, window;
 		},
 		
 		/**
-		 *
+		 * Returns Function called when one resource of the resourcelist created by provide is loaded. 
+		 * When all resources are loaded the Callback function will be called
+		 * @param {Array} resources Array of resource objects that are going to be loaded
+		 * @param {Function} cb Callback function to call when resources are loaded
+		 * @return {Function} Resource check callback function which accepts the resource object of the resource loaded and 
+		 * an array of arguments for the callback function
 		 */
 		provideCallback: function(resources, cb){
 			var i, res, 
@@ -1793,18 +1940,18 @@ var require, exports, module, window;
 				
 			// generate fresh resourcelist	
 			for (i=0; res = resources[i]; i++){
-				reslist.push(res.uri + res.id)
+				reslist.push(res.url)
 			}
 			// return callback function
 			return function contextProvideCallback(resource, args){
 				var i, res;
 				
 				// ready loading this resource so remove from context global loading list
-				that.loading.remove(resource.uri + resource.id);
+				that.loading.remove(resource.url);
 				
 				// check if all given resources are recursively loaded
 				for (i=0; res = reslist[i]; i++){
-					if (res == resource.uri + resource.id)
+					if (res == resource.url)
 						break;
 				}
 				// if resource existed in list remove it
@@ -1820,43 +1967,35 @@ var require, exports, module, window;
 		},
 		
 		/**
-		 *
+		 * Gets module system descriptor for this context, can be overridden in later child classes to extend with packages 
+		 * @return {Module System Descriptor Object} The retrieved Module System Descriptor Object
 		 */
 		getMS: function() {
+			return this.ms;
 		},
 		
 		/**
-		 *
+		 * Save the given module system in this context as a module system descriptor, can be overridden in later child classes to extend with packages
+		 * @param {ModuleSystem} ms The module system object to set
+		 * @param {String} uri The location of the modules of this Module System
+		 * @return {Module System Descriptor Object} The created Module System Descriptor Object
 		 */
-		setMS: function() {
-		},
-		
-		/**
-		 * Return all the relevant information from a given Module System identified with its uid
-		 * @param {string} uid The uid of the Module system information is requested from
-		 * @param {dep} dep
-		 * @return {object} An object with all relevant Module System information
-		 */
-		getMSId: function(uid, dep){
-			var ms = this.moduleSubs.get(uid);
-			return {
-				ms: ms.ms,
-				uid: uid,
-				uri: ms.uri,
-				id: dep
-			}
+		setMS: function(ms, uri) {
+			return this.ms = {
+				ms: ms,
+				uri: uri
+			};
 		},
 		
 		/**
 		 * Create an API object as defined in the Loader specs
 		 * @param {string} mId The standard ModuleID (resolved to the given Module System) to use 
-		 * @param {string} ms The module system id this API is requested for
+		 * @param {Module System Descriptor Object} msDescriptor The module system descriptor this API is requested for
 		 * @return {LoaderAPI Object} The API as defined by the Loader specs
 		 */
-		createAPI: function(mId, ms){
-			var ms = this.moduleSubs.get(ms).ms;
+		createAPI: function(mId, msDescriptor){
+			var ms = msDescriptor.ms;
 			return {
-				msuri: ms.uri,
 				deps: [],
 				memoize: function ContextAPIMemoize(id, deps, factoryFn){
 					// no given id then use requested id
@@ -1988,7 +2127,7 @@ var require, exports, module, window;
 				if ((loader = this.loaders.get(scheme)) === UNDEF) return false;
 				
 				// call load function of the SpecificLoader with resource, loader API and ready callback function
-				loader.load(res.uri + res.id, res.api, this.createLoadedCb(res, cb));
+				loader.load(res.url, res.api, this.createLoadedCb(res, cb));
 			}
 		},
 		
@@ -2306,9 +2445,8 @@ module.declare('scriptLoader', [], function(require, exports, module){
 	/********************************************************************************************
 	* ScriptLoader implemented as Class															*
 	********************************************************************************************/
-	function ScriptLoader(cfg) {
-		var loaderPlugins, transport, plugin,
-			modules = cfg.modules;
+	function ScriptLoader(cfg, plugins) {
+		var transport, plugin;
 		
 		this.env = cfg.env;
 		this.testInteractive = !!cfg.env.ActiveXObject;				// test if IE for onload workaround... 
@@ -2317,12 +2455,10 @@ module.declare('scriptLoader', [], function(require, exports, module){
 		this.transports = [];
 		
 		// create the transports plugins
-		if ((loaderPlugins = cfg.commonjsAPI.loaderPlugins) !==UNDEF) {
-			for (var i=0; transport = loaderPlugins[i]; i++) {
-				plugin = modules.execute(transport);
-				if (!plugin || !(plugin = plugin.create(cfg, this))) throw new Error("No correct CommonJS loaderPlugin: " + transport + " declaration!!");
-				this.transports.push(plugin);
-			}
+		for (var i=0; transport = plugins[i]; i++) {
+			plugin = require(transport);
+			if (!plugin || !(plugin = plugin.create(cfg, this))) throw new Error("No correct CommonJS loaderPlugin: " + transport + " declaration!!");
+			this.transports.push(plugin);
 		}
 	}
 	
@@ -2504,8 +2640,8 @@ module.declare('scriptLoader', [], function(require, exports, module){
 	/********************************************************************************************
 	* Loader System API generation																*
 	********************************************************************************************/
-	exports.create = function(cfg){
-		return new ScriptLoader(cfg);
+	exports.create = function(cfg, plugins){
+		return new ScriptLoader(cfg, plugins);
 	};
 });
 /*-------------------------------------------------------------------------------------\

@@ -53,11 +53,11 @@
 		 * Module class definition
 		 * @param {string} id The global id of this Module
 		 */
-		constructor: function(id, deps, factoryFn, cms) {
+		constructor: function(id, deps, factoryFn, ms) {
 			this.id = id;																// The full top level id of this module in this system
 			this.deps = deps;															// The module dependencies (The full top level id's)
 			this.factoryFn = factoryFn;													// Factory Function
-			this.cms = cms;																// The core module system this module is defined in
+			this.ms = ms;																// The module system this module is defined in
 			
 			this.exports = {};															// The exports object for this module
 			this.module = null;															// The module variable for the factory function
@@ -71,10 +71,10 @@
 		 */
 		require: function(id) {
 			// resolve id to current environment
-			id = (id === '') ? id : this.cms.resolveId(this.id, id);
+			id = (id === '') ? id : this.ms.resolveId(this.id, id);
 			
 			// get requested module exports
-			var exports = this.cms.require(id);
+			var exports = this.ms.require(id);
 			if (!exports) {
 				// module doesn't exist so throw error
 				throw "Module: " + id + " doesn't exist!!";
@@ -97,11 +97,11 @@
 			// normalize dependancy ids relative to the module requiring it
 			for (var i=0; deps[i]; i++) {
 				// resolve given dependency and save for load
-				lDeps.push(this.cms.resolveId(this.id, deps[i]));
+				lDeps.push(this.ms.resolveId(this.id, deps[i]));
 			};
 			
 			// Call Core Module System to load the requested modules and if ready call the callback function
-			this.cms.provide(lDeps, cb)
+			this.ms.provide(lDeps, cb)
 			
 			// return undefined at this moment, standard is not clear about this.
 			return UNDEF;
@@ -118,7 +118,7 @@
 				// need reference to module object with id and uri of this module
 				// do mixin of result and this.exports
 				this.state = READY;	// set to true before initialization call because module can request itself.. (circular dep problems) 
-				system.mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
+				system.getUtils().mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
 			}
 			
 			// if READY then return this module exports else return null 
@@ -152,7 +152,7 @@
 			if (!this.module) {
 				// else fill new module
 				this.module = {
-					id: this.cms.id(this.id),
+					id: this.ms.id(this.id),
 				}
 			}
 			// return the module

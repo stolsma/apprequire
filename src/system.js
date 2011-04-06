@@ -44,13 +44,14 @@
 		objEscStr = '_',										// Object property escape string
 		Base,													// Base class... All other classes created with system functions inherit from this class
 		system = {},											// system singleton definition in this private scope
+		utils = {},												// utils singleton definition in this private scope
 		objectPrototype = Object.prototype,
 		enumerables = true,
 		enumerablesTest = { toString: 1 },
 		i;
 		
 	/********************************************************************************************
-	* System Singleton methods definition and system env sniffing								*
+	* Utils Singleton methods definition 														*
 	********************************************************************************************/
 	for (i in enumerablesTest) {
 		enumerables = null;
@@ -62,28 +63,28 @@
 	}
 
 	/**
-	 * @class System
-	 * AppRequire core utilities and functions.
+	 * @class Utils
+	 * AppRequire utility functions.
 	 * @singleton
 	 */
 	/**
-	 * Put it into system namespace so that we can reuse outside this
+	 * Put it into utils namespace so that we can reuse outside this closure
 	 * @type Array
 	 */
-	system.enumerables = enumerables;
+	utils.enumerables = enumerables;
 		
 	/**
 	 * Copies all the properties of config to the specified object.
 	 * IMPORTANT: Note that it doesn't take care of recursive merging and cloning without referencing the original objects / arrays
-	 * Use system.merge instead if you need that.
+	 * Use utils.merge instead if you need that.
 	 * @param {Object} object The receiver of the properties
 	 * @param {Object} config The source of the properties
 	 * @param {Object} defaults A different object that will also be applied for default values
 	 * @return {Object} returns obj
 	 */
-	system.apply = function(object, config, defaults) {
+	utils.apply = function(object, config, defaults) {
 		if (defaults) {
-			system.apply(object, defaults);
+			utils.apply(object, defaults);
 		}
 
 		if (object && config && typeof config === 'object') {
@@ -109,7 +110,7 @@
 	 * A full set of static methods to do type checking
 	 * @ignore
 	 */
-	system.apply(system, {
+	utils.apply(utils, {
 		/**
 		 * Returns true if the passed value is empty. The value is deemed to be empty if it is:
 		 * <ul>
@@ -123,7 +124,7 @@
 		 * @return {Boolean}
 		 */
 		isEmpty: function(value, allowBlank) {
-			return (value === null) || (value === undefined) || ((system.isArray(value) && !value.length)) || (!allowBlank ? value === '' : false);
+			return (value === null) || (value === undefined) || ((utils.isArray(value) && !value.length)) || (!allowBlank ? value === '' : false);
 		},
 
 		/**
@@ -159,7 +160,7 @@
 		 * @return {Boolean}
 		 */
 		isPrimitive: function(value) {
-			return system.isString(value) || system.isNumber(value) || system.isBoolean(value);
+			return utils.isString(value) || utils.isNumber(value) || utils.isBoolean(value);
 		},
 
 		/**
@@ -235,7 +236,7 @@
 				return false;
 			}
 			//check for array or arguments
-			if (system.isArray(value) || value.callee) {
+			if (utils.isArray(value) || value.callee) {
 				return true;
 			}
 			//check for node list type
@@ -245,7 +246,7 @@
 
 			//NodeList has an item and length property
 			//IXMLDOMNodeList has nextNode method, needs to be checked first.
-			return ((typeof value.nextNode !== 'undefined' || value.item) && system.isNumber(value.length)) || false;
+			return ((typeof value.nextNode !== 'undefined' || value.item) && utils.isNumber(value.length)) || false;
 		}
 	});
 	
@@ -253,7 +254,7 @@
 	 * A full set of static methods to do variable handling
 	 * @ignore
 	 */
-	system.apply(system, {
+	utils.apply(utils, {
 		/**
 		 * Clone almost any type of variable including array, object and Date without keeping the old reference
 		 * @param {Mixed} item The variable to clone
@@ -272,21 +273,21 @@
 			var i, j, k, clone, key;
 
 			// Array
-			if (system.isArray(item)) {
+			if (utils.isArray(item)) {
 				i = item.length;
 
 				clone = new Array(i);
 
 				while (i--) {
-					clone[i] = system.clone(item[i]);
+					clone[i] = utils.clone(item[i]);
 				}
 			}
 			// Object
-			else if (system.isObject(item) && item.constructor === Object) {
+			else if (utils.isObject(item) && item.constructor === Object) {
 				clone = {};
 
 				for (key in item) {
-					clone[key] = system.clone(item[key]);
+					clone[key] = utils.clone(item[key]);
 				}
 
 				if (enumerables) {
@@ -306,19 +307,19 @@
 		 * @return {Object} merged The object that is created as a result of merging all the objects passed in.
 		 */
 		merge: function(source, key, value) {
-			if (system.isString(key)) {
-				if (system.isObject(value) && system.isObject(source[key])) {
+			if (utils.isString(key)) {
+				if (utils.isObject(value) && utils.isObject(source[key])) {
 					if (value.constructor === Object) {
-						system.merge(source[key], value);
+						utils.merge(source[key], value);
 					} else {
 						source[key] = value;
 					}
 				}
-				else if (system.isObject(value) && value.constructor !== Object){
+				else if (utils.isObject(value) && value.constructor !== Object){
 					source[key] = value;
 				}
 				else {
-					source[key] = system.clone(value);
+					source[key] = utils.clone(value);
 				}
 	
 				return source;
@@ -332,7 +333,7 @@
 				obj = arguments[i];
 				for (prop in obj) {
 					if (obj.hasOwnProperty(prop)) {
-						system.merge(source, prop, obj[prop]);
+						utils.merge(source, prop, obj[prop]);
 					}
 				}
 			}
@@ -374,11 +375,11 @@
 		 * @return {Array} array
 		 */
 		from: function(value) {
-			if (system.isIterable(value)) {
-				return system.toArray(value);
+			if (utils.isIterable(value)) {
+				return utils.toArray(value);
 			}
 
-			if (system.isDefined(value) && value !== null) {
+			if (utils.isDefined(value) && value !== null) {
 				return [value];
 			}
 
@@ -430,9 +431,9 @@
 						}
 					}
 	
-					if (system.enumerables) {
-						for (i = system.enumerables.length; i--;) {
-							k = system.enumerables[i];
+					if (utils.enumerables) {
+						for (i = utils.enumerables.length; i--;) {
+							k = utils.enumerables[i];
 							if (a.hasOwnProperty(k)) {
 								fn.call(this, k, a[k]);
 							}
@@ -469,7 +470,7 @@
 					callArgs = Array.prototype.slice.call(arguments, 0);
 					callArgs = callArgs.concat(args);
 				}
-				else if (system.isNumber(appendArgs)) {
+				else if (utils.isNumber(appendArgs)) {
 					callArgs = Array.prototype.slice.call(arguments, 0); // copy arguments first
 					applyArgs = [appendArgs, 0].concat(args); // create method call params
 					Array.prototype.splice.apply(callArgs, applyArgs); // splice them in
@@ -501,21 +502,29 @@
 		 */
 		pass: function(fn, args, scope) {
 			if (args) {
-				args = system.from(args);
+				args = utils.from(args);
 			}
 	
 			return function() {
-				return fn.apply(scope, args.concat(system.toArray(arguments)));
+				return fn.apply(scope, args.concat(utils.toArray(arguments)));
 			};
 		}
 		
 	});
 	
+	/********************************************************************************************
+	* System Singleton methods definition 														*
+	********************************************************************************************/
+	/**
+	 * @class System
+	 * AppRequire's CommonJS System environment functions.
+	 * @singleton
+	 */
 	/**
 	 * A full set of methods to do CommonJS class inheritance
 	 * @ignore
 	 */
-	system.apply(system, {
+	utils.apply(system, {
 		/**
 		 * Classes repository
 		 * @property
@@ -536,7 +545,7 @@
 				tmp = function(){};
 			
 			// check if superclass is string else use 'Base' as superclass
-			if (!system.isString(superclass)) { 
+			if (!utils.isString(superclass)) { 
 				overrides = superclass;
 				superclass = 'Base';
 			};
@@ -561,7 +570,7 @@
 		 * @return {Base} The instantiated class.
 		 */
 		instantiate: function() {
-			var args = system.toArray(arguments),
+			var args = utils.toArray(arguments),
 				name = args.shift(),
 				temp = function() {},
 				cls, constructor, instanceCls;
@@ -585,6 +594,15 @@
 			instanceCls.prototype.constructor = instanceCls;
 
 			return new instanceCls();
+		},
+		
+		/**
+		 * Does the class with the requested name exist in the class table
+		 * @param {String} name The name of the class
+		 * @return {Boolean} True if the class exists, false if not.
+		 */
+		exists: function(name) {
+			return !!(system.classes[objEscStr + name]);
 		},
 
 		/**
@@ -650,6 +668,18 @@
 			
 			// and return the new class
 			return cls;
+		},
+		
+		/**
+		 *
+		 * @return {Object} Object with all utils functions
+		 */
+		getUtils: function() {
+			var result = {};
+			// copy util functions to new object to create save environment 
+			utils.apply(result, utils);
+			// and give new utils object back
+			return result;
 		}
 	});
 	
@@ -742,14 +772,14 @@
 	};
 	
 	// These static Base properties will be copied to every newly created class
-	system.apply(Base, {
+	utils.apply(Base, {
 		/**
 		 * @private
 		 */
 		ownMethod: function(name, fn) {
 			var originalFn, className;
 
-			if (fn === system.emptyFn) {
+			if (fn === utils.emptyFn) {
 				this.prototype[name] = fn;
 				return;
 			}
@@ -791,11 +821,11 @@
 		 * @param {Mixed} value See {@link Ext.Function#flexSetter flexSetter}
 		 * @markdown
 		 */
-		extend: system.flexSetter(function(name, value) {
-			if (system.isObject(this.prototype[name]) && system.isObject(value)) {
-				system.merge(this.prototype[name], value);
+		extend: utils.flexSetter(function(name, value) {
+			if (utils.isObject(this.prototype[name]) && utils.isObject(value)) {
+				utils.merge(this.prototype[name], value);
 			}
-			else if (system.isFunction(value)) {
+			else if (utils.isFunction(value)) {
 				this.ownMethod(name, value);
 			}
 			else {
@@ -813,12 +843,12 @@
 		 * @param {Mixed} value See {@link Ext.Function#flexSetter flexSetter}
 		 * @markdown
 		 */
-		override: system.flexSetter(function(name, value) {
-			if (system.isObject(this.prototype[name]) && system.isObject(value)) {
-				system.merge(this.prototype[name], value);
+		override: utils.flexSetter(function(name, value) {
+			if (utils.isObject(this.prototype[name]) && utils.isObject(value)) {
+				utils.merge(this.prototype[name], value);
 			}
-			else if (system.isFunction(value)) {
-				if (system.isFunction(this.prototype[name])) {
+			else if (utils.isFunction(value)) {
+				if (utils.isFunction(this.prototype[name])) {
 					var previous = this.prototype[name];
 					this.ownMethod(name, value);
 					this.prototype[name].$previous = previous;

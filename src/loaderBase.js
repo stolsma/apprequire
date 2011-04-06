@@ -83,7 +83,7 @@
 				if ((loader = this.loaders.get(scheme)) === UNDEF) return false;
 				
 				// call load function of the SpecificLoader with resource, loader API and ready callback function
-				loader.load(res.uri + res.id, res.api, this.createLoadedCb(res, cb));
+				loader.load(res.url, res.api, this.createLoadedCb(res, cb));
 			}
 		},
 		

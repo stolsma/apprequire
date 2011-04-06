@@ -36,31 +36,35 @@
  * and utility code of Ext Core 4 (copyright Sencha, http://www.sencha.com)
  *
  * For documentation how to use this: http://code.tolsma.net/apprequire
+ * @author Sander Tolsma <code@tolsma.net>
+ * @docauthor Sander Tolsma <code@tolsma.net>
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
 		system,													// system singleton definition in this private scope
 	
-	/********************************************************************************************
-	* Module System implemented as Class														*
-	********************************************************************************************/
+	/**
+	 * @class ModuleSystem
+	 * Default CommonJS Module System definition.
+	 */
 	ModuleSystemClass = {
 		/**
-		 * @property uid
-		 */
-		/**
+		 * Store of the defined modules for this Module System
 		 * @property store
+		 * @type Store
 		 */
 		/**
 		 * Module System class definition
 		 * @constructor
-		 * @param {string} uid The uid of this module system
+		 * @param {cfgObject} cfg The standard cfg object.
 		 */
-		constructor: function(uid) {
-			// save the uri for this module system
-			this.uid = uid;
+		constructor: function(cfg) {
+			var me = this;
+			
+			// Classname for modules
+			me.mClass = cfg.system.module;
 			// create the module store for this module system
-			this.store = system.instantiate('Store');
+			me.store = system.instantiate(cfg.system.store);
 		},
 
 		/**
@@ -80,7 +84,7 @@
 		},
 		
 		/**
-		 * API hook to create a module in this systems modules list
+		 * API hook to create a module in this Module System
 		 * @param {string} id The full top level id of the module in this module system.
 		 * @param {array} deps Array of full top level dependency id's in this module system.
 		 * @param {function} factoryFn The factory function of the module.
@@ -89,7 +93,7 @@
 		memoize: function MSMemoize(id, deps, factoryFn){
 			// create Module Instance and save in module store if not already exists
 			if (!this.store.exist(id)) {
-				this.store.set(id, system.instantiate('Module', id, deps, factoryFn, this));
+				this.store.set(id, system.instantiate(this.mClass, id, deps, factoryFn, this));
 				return true;
 			}
 			
@@ -97,13 +101,17 @@
 			return false;
 		},
 		
-		// API hook
+		/**
+		 * API hook to check if a module exists in this system
+		 * @param {string} id The full top level id of the module in this module system.
+		 * @return {bool} True if module with id exists, false if module with id doesn't exists
+		 */
 		isMemoized: function MSIsMemoized(id){
 			return this.store.exist(id);
 		},
 		
 		/**
-		 * API hook for for higher layers to provide not available modules in this system
+		 * API hook to provide not available modules in this system
 		 * @param {array] deps The full top level module id's that need to be INIT state before cb is called
 		 * @param {function} cb Callback function called when all given deps are in INIT state
 		 */
@@ -113,7 +121,7 @@
 		},
 		
 		/**
-		 * API hook to return the exports of the main module of the root system
+		 * API hook to return the exports of the main module of the Main Module System
 		 * @param {string} id The full top level id of the module who wants to know its context main module exports
 		 * @return {exports} The exports of the context main module 
 		 */
