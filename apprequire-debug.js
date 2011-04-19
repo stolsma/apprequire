@@ -1821,35 +1821,34 @@ var require, exports, module, window;
 			var me = this,
 				ms;
 			
+			// TODO Check if cfg.location is there else throw with error ??
 			// create the Main Module System
 			ms = system.instantiate(me.msClass, me.cfg);
 			// save the main Module System with other system info for later retrieval
 			me.setMS(ms, me.cfg.location);
-			
-			// extend Module System API
+			// extend Main Module System API
 			ms.provide = function ContextProvide(deps, cb) {
 				me.provide(me.getMS(), deps, cb);
 			};
-			
 			// add default system modules to the main module system
 			me.addSystemModules(ms, modules);
 			
+			// generate loaders and the plugins
+			me.startupLoaders(ms, this.cfg.loaders);
+												
 			// create extra module environment require
 			me.env.require = function wrapperRequire(){
 				return ms.require.apply(ms, arguments);
 			};
 			// create extra module environment module.provide
 			me.env.module.provide = function wrapperProvide(deps, cb){
-				me.provide(me.getMS(), deps, cb);
+				ms.provide(deps, cb);
 			};
 			
-			// generate loaders and the plugins
-			me.startupLoaders(ms, this.cfg.loaders);
-												
 			// main module given to startup with??
-			if (me.cfg.location && me.cfg.main) {
-				me.provide(me.getMS(), me.cfg.main, function contextConstructorInitLoadCB(){
-					 me.getMS().ms.require(me.cfg.main);
+			if (me.cfg.main) {
+				ms.provide(me.cfg.main, function contextConstructorInitLoadCB(){
+					 ms.require(me.cfg.main);
 				})
 			}
 		},
