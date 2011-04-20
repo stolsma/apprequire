@@ -51,6 +51,10 @@
 		 * @param {cfgObject} cfg The standard cfg object.
 		 */
 		constructor: function(sys, cfg) {
+			
+			// get utility functions singleton
+			this.utils = sys.getUtils();
+			
 			/**
 			 * The store with the defined scheme / SpecificLoader combinations
 			 */
@@ -85,30 +89,8 @@
 				if ((loader = this.loaders.get(scheme)) === UNDEF) return false;
 				
 				// call load function of the SpecificLoader with resource, loader API and ready callback function
-				loader.load(res.url, res.api, this.createLoadedCb(res, cb));
+				loader.load(res.url, res.api, this.utils.pass(cb, [res]));
 			}
-		},
-		
-		/**
-		 * Will be called when the SpecificLoader is ready loading the specified resource
-		 * @param {string} resource The URI of the resource that was loaded.
-		 * @param {array} args The arguments given back by the used loader.
-		 */
-		loaded: function(resource, cb, args){
-			// if callback function exists then call it with given arguments
-			if (cb !== UNDEF) cb.call(null, resource, args);
-		},
-		
-		/**
-		 * Create callback function for a SpecificLoader to call when the requested 'item' is loaded by the SpecificLoader
-		 * @param {string} resource URI of the resource to be loaded by the SpecificLoader
-		 * @return {function} Function closure that calls this.loaded
-		 */
-		createLoadedCb: function(resource, cb){
-			var that = this;
-			return function contextLoadedCb(){
-				that.loaded.call(that, resource, cb, arguments);
-			};
 		},
 		
 		getScheme: function(resource){
