@@ -155,7 +155,7 @@
 		 * @param {Function} cb Callback function to call when dependencies are loaded
 		 */
 		provide: function(msDescr, deps, cb){
-			var i, dep, depDescr
+			var i, dep, depDescr,
 				resources = [];
 				
 			// convert string to array
