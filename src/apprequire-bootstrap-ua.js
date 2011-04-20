@@ -168,18 +168,6 @@ var require, exports, module, window;
 	}
 	
 	/**
-	 * Create a new CommonJS context
-	 * @param {System} system The CommonJS System this new Context will be working in.
-	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
-	 * @param {Array} modules Array of standard modules to add to the main Module System
-	 * @return {Context} The created context
-	 */
-	function createNewContext(system, cfg, modules) {
-		modules = (modules || systemModules);
-		return system.instantiate(cfg.system.context, system, cfg, modules);
-	}
-	
-	/**
 	 * Setup the extra module environment by using the defined CommonJS system environment
 	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
 	 */
@@ -191,7 +179,7 @@ var require, exports, module, window;
 		delete cfg.env.module.addClass;
 
 		// create context with current cfg, and the System Module list.
-		context = createNewContext(system, cfg, systemModules);
+		context = system.createContext(cfg, systemModules);
 			
 		// debug info ??
 		if (cfg.debug) {

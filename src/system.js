@@ -674,6 +674,16 @@
 		},
 
 		/**
+		 * Create a new CommonJS context
+		 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
+		 * @param {Array} modules Array of standard modules to add to the main Module System
+		 * @return {Context} The created context
+		 */
+		createContext: function(cfg, modules) {
+			return this.instantiate(cfg.system.context, this, cfg, modules);
+		},
+		
+		/**
 		 *
 		 * @return {Object} Object with all utils functions
 		 */
