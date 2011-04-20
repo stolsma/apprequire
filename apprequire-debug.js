@@ -1046,7 +1046,27 @@ var require, exports, module, window;
 		 * @return {Context} The created context
 		 */
 		createContext: function(cfg, modules) {
-			return this.instantiate(cfg.system.context, this, cfg, modules);
+			var mod, ms;
+			
+			// check modules list
+			modules = modules || {};
+			// and add also the utils singleton to modules list
+			modules['util'] = {
+				dep: [],
+				factoryFn: function(r,e,m) {
+					exports = utils; 
+				} 
+			};
+			
+			// create system Module System
+			ms = this.instantiate(cfg.system.moduleSystem, this, cfg, UNDEF);
+			// and add given modules
+			for (mod in modules){
+				ms.memoize(mod, modules[mod].deps, modules[mod].factoryFn);				
+			}
+			
+			// return the created context
+			return this.instantiate(cfg.system.context, this, cfg, ms);
 		},
 		
 		/**
@@ -1593,12 +1613,15 @@ var require, exports, module, window;
 		 * @constructor
 		 * @param {System} sys The CommonJS System this ModuleSystem is working in.
 		 * @param {cfgObject} cfg The standard cfg object.
+		 * @param {ModuleSystem} sMS The system Module System
 		 */
-		constructor: function(sys, cfg) {
+		constructor: function(sys, cfg, sMS) {
 			var me = this;
 			
 			// save the system we depend on
-			me.system = sys; 
+			me.system = sys;
+			// save the system Module System
+			me.sMS = sMS;
 			// Classname for modules
 			me.mClass = cfg.system.module;
 			// create the module store for this module system
@@ -1612,6 +1635,11 @@ var require, exports, module, window;
 		 */
 		require: function MSRequire(id){
 			var mod;
+			
+			// check if in system Module System first
+			if (this.sMS && (mod = this.sMS.require(id))) {
+				return mod;
+			}
 			// exists this module in this system?
 			if (mod = this.store.get(id)) {
 				return mod.createModule();
@@ -1630,7 +1658,7 @@ var require, exports, module, window;
 		 */
 		memoize: function MSMemoize(id, deps, factoryFn){
 			// create Module Instance and save in module store if not already exists
-			if (!this.store.exist(id)) {
+			if (!this.store.exist(id) && !(this.sMS && this.sMS.isMemoized(id))) {
 				this.store.set(id, this.system.instantiate(this.mClass, this.system, id, deps, factoryFn, this));
 				return true;
 			}
@@ -1645,6 +1673,10 @@ var require, exports, module, window;
 		 * @return {bool} True if module with id exists, false if module with id doesn't exists
 		 */
 		isMemoized: function MSIsMemoized(id){
+			// check if in system Module System first
+			if (this.sMS && this.sMS.isMemoized(id)) {
+				return true;
+			}
 			return this.store.exist(id);
 		},
 		
@@ -1783,14 +1815,16 @@ var require, exports, module, window;
 		 * @constructor
 		 * @param {System} sys The CommonJS System this context is working in.
 		 * @param {cfgObject} cfg The standard cfg object.
-		 * @param {Array} modules Array of standard modules to add to the Core Module System
+		 * @param {ModuleSystem} sMS The system Module System
 		 */
-		constructor: function(sys, cfg, modules) {
+		constructor: function(sys, cfg, sMS) {
 			var me = this,
 				cfgSystem = cfg.system;
 			
 			// save the system we depend on
 			me.system = sys; 
+			// save the system Module System
+			me.sMS = sMS;
 			// save the config
 			me.cfg = cfg;
 			me.env = cfg.env;
@@ -1801,31 +1835,28 @@ var require, exports, module, window;
 			me.loading = me.system.instantiate(me.storeClass, sys);
 			
 			// create core module system
-			me.startupCMS(modules);
+			me.startupCMS();
 		},
 		
 		/********************************************************************************************
 		* Context Startup Functions																	*
 		********************************************************************************************/
 		/**
-		 * Creates the core module system, adds the given standard modules and installs the loaders for the CMS
-		 * @param {Array} modules Array of standard modules to add to the main Module System
+		 * Creates the main Module System and installs the loaders for the CMS
 		 */
-		startupCMS: function(modules) {
+		startupCMS: function() {
 			var me = this,
 				ms;
 			
 			// TODO Check if cfg.location is there else throw with error ??
 			// create the Main Module System
-			ms = me.system.instantiate(me.msClass, me.system, me.cfg);
+			ms = me.system.instantiate(me.msClass, me.system, me.cfg, me.sMS);
 			// save the main Module System with other system info for later retrieval
 			me.setMS(ms, me.cfg.location);
 			// extend Main Module System API
 			ms.provide = function ContextProvide(deps, cb) {
 				me.provide(me.getMS(), deps, cb);
 			};
-			// add default system modules to the main module system
-			me.addSystemModules(ms, modules);
 			
 			// generate loaders and the plugins
 			me.startupLoaders(ms, this.cfg.loaders);
@@ -1844,18 +1875,6 @@ var require, exports, module, window;
 				ms.provide(me.cfg.main, function contextConstructorInitLoadCB(){
 					 ms.require(me.cfg.main);
 				})
-			}
-		},
-		
-		/**
-		 * Add an array of module definitions to the given Module System
-		 * @param {ModuleSystem} ms the Module System to add the modules to
-		 * @param {Array} modules Array of modules to add to the Module System
-		 */
-		addSystemModules: function(ms, modules){
-			var mod;
-			for (mod in modules){
-				ms.memoize(mod, modules[mod].deps, modules[mod].factoryFn);				
 			}
 		},
 		

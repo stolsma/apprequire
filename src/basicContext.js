@@ -52,14 +52,16 @@
 		 * @constructor
 		 * @param {System} sys The CommonJS System this context is working in.
 		 * @param {cfgObject} cfg The standard cfg object.
-		 * @param {Array} modules Array of standard modules to add to the Core Module System
+		 * @param {ModuleSystem} sMS The system Module System
 		 */
-		constructor: function(sys, cfg, modules) {
+		constructor: function(sys, cfg, sMS) {
 			var me = this,
 				cfgSystem = cfg.system;
 			
 			// save the system we depend on
 			me.system = sys; 
+			// save the system Module System
+			me.sMS = sMS;
 			// save the config
 			me.cfg = cfg;
 			me.env = cfg.env;
@@ -70,31 +72,28 @@
 			me.loading = me.system.instantiate(me.storeClass, sys);
 			
 			// create core module system
-			me.startupCMS(modules);
+			me.startupCMS();
 		},
 		
 		/********************************************************************************************
 		* Context Startup Functions																	*
 		********************************************************************************************/
 		/**
-		 * Creates the core module system, adds the given standard modules and installs the loaders for the CMS
-		 * @param {Array} modules Array of standard modules to add to the main Module System
+		 * Creates the main Module System and installs the loaders for the CMS
 		 */
-		startupCMS: function(modules) {
+		startupCMS: function() {
 			var me = this,
 				ms;
 			
 			// TODO Check if cfg.location is there else throw with error ??
 			// create the Main Module System
-			ms = me.system.instantiate(me.msClass, me.system, me.cfg);
+			ms = me.system.instantiate(me.msClass, me.system, me.cfg, me.sMS);
 			// save the main Module System with other system info for later retrieval
 			me.setMS(ms, me.cfg.location);
 			// extend Main Module System API
 			ms.provide = function ContextProvide(deps, cb) {
 				me.provide(me.getMS(), deps, cb);
 			};
-			// add default system modules to the main module system
-			me.addSystemModules(ms, modules);
 			
 			// generate loaders and the plugins
 			me.startupLoaders(ms, this.cfg.loaders);
@@ -113,18 +112,6 @@
 				ms.provide(me.cfg.main, function contextConstructorInitLoadCB(){
 					 ms.require(me.cfg.main);
 				})
-			}
-		},
-		
-		/**
-		 * Add an array of module definitions to the given Module System
-		 * @param {ModuleSystem} ms the Module System to add the modules to
-		 * @param {Array} modules Array of modules to add to the Module System
-		 */
-		addSystemModules: function(ms, modules){
-			var mod;
-			for (mod in modules){
-				ms.memoize(mod, modules[mod].deps, modules[mod].factoryFn);				
 			}
 		},
 		

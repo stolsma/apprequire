@@ -680,7 +680,27 @@
 		 * @return {Context} The created context
 		 */
 		createContext: function(cfg, modules) {
-			return this.instantiate(cfg.system.context, this, cfg, modules);
+			var mod, ms;
+			
+			// check modules list
+			modules = modules || {};
+			// and add also the utils singleton to modules list
+			modules['util'] = {
+				dep: [],
+				factoryFn: function(r,e,m) {
+					exports = utils; 
+				} 
+			};
+			
+			// create system Module System
+			ms = this.instantiate(cfg.system.moduleSystem, this, cfg, UNDEF);
+			// and add given modules
+			for (mod in modules){
+				ms.memoize(mod, modules[mod].deps, modules[mod].factoryFn);				
+			}
+			
+			// return the created context
+			return this.instantiate(cfg.system.context, this, cfg, ms);
 		},
 		
 		/**

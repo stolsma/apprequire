@@ -57,12 +57,15 @@
 		 * @constructor
 		 * @param {System} sys The CommonJS System this ModuleSystem is working in.
 		 * @param {cfgObject} cfg The standard cfg object.
+		 * @param {ModuleSystem} sMS The system Module System
 		 */
-		constructor: function(sys, cfg) {
+		constructor: function(sys, cfg, sMS) {
 			var me = this;
 			
 			// save the system we depend on
-			me.system = sys; 
+			me.system = sys;
+			// save the system Module System
+			me.sMS = sMS;
 			// Classname for modules
 			me.mClass = cfg.system.module;
 			// create the module store for this module system
@@ -76,6 +79,11 @@
 		 */
 		require: function MSRequire(id){
 			var mod;
+			
+			// check if in system Module System first
+			if (this.sMS && (mod = this.sMS.require(id))) {
+				return mod;
+			}
 			// exists this module in this system?
 			if (mod = this.store.get(id)) {
 				return mod.createModule();
@@ -94,7 +102,7 @@
 		 */
 		memoize: function MSMemoize(id, deps, factoryFn){
 			// create Module Instance and save in module store if not already exists
-			if (!this.store.exist(id)) {
+			if (!this.store.exist(id) && !(this.sMS && this.sMS.isMemoized(id))) {
 				this.store.set(id, this.system.instantiate(this.mClass, this.system, id, deps, factoryFn, this));
 				return true;
 			}
@@ -109,6 +117,10 @@
 		 * @return {bool} True if module with id exists, false if module with id doesn't exists
 		 */
 		isMemoized: function MSIsMemoized(id){
+			// check if in system Module System first
+			if (this.sMS && this.sMS.isMemoized(id)) {
+				return true;
+			}
 			return this.store.exist(id);
 		},
 		
