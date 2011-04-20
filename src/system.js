@@ -63,7 +63,7 @@
 	}
 
 	/**
-	 * @class Utils
+	 * @class utils
 	 * AppRequire utility functions.
 	 * @singleton
 	 */
@@ -398,7 +398,7 @@
 		 *
 		 * For example:
 		 * <pre><code>
-	var setValue = Ext.Function.flexSetter(function(name, value) {
+	var setValue = utils.flexSetter(function(name, value) {
 		this[name] = value;
 	});
 	
@@ -484,17 +484,6 @@
 		 * Create a new function from the provided <code>fn</code>, the arguments of which are pre-set to `args`.
 		 * New arguments passed to the newly created callback when it's invoked are appended after the pre-set ones.
 		 * This is especially useful when creating callbacks.
-		 * For example:
-		 *
-		var originalFunction = function(){
-			alert(Ext.Array.from(arguments).join(' '));
-		};
-	
-		var callback = Ext.Function.pass(originalFunction, ['Hello', 'World']);
-	
-		callback(); // alerts 'Hello World'
-		callback('by Me'); // alerts 'Hello World by Me'
-	
 		 * @param {Function} fn The original function
 		 * @param {Array} args The arguments to pass to new callback
 		 * @param {Object} scope (optional) The scope (<code><b>this</b></code> reference) in which the function is executed.
@@ -509,9 +498,78 @@
 				return fn.apply(scope, args.concat(utils.toArray(arguments)));
 			};
 		}
-		
 	});
 	
+	/**
+	 * A full set of static methods to do class handling
+	 * @ignore
+	 */
+	utils.apply(utils, {
+		/**
+		 * Extend superclass with given overrides and gives new class constructor back
+		 * @function
+		 * @param {Function} superclass
+		 * @param {Object} overrides
+		 * @return {Function} The subclass constructor from the <tt>overrides</tt> parameter, or a generated one if not provided.
+		 */
+		extend: function(superclass, overrides) {
+			var base = Base,
+				temp = function() {},
+				parent, i,
+				cls = function() {
+					return this.constructor.apply(this, arguments);
+				},
+				staticProp;
+				
+			// which class to extend, given one or the basic Base class
+			if (typeof superclass === 'function' && superclass !== Object) 
+				parent = superclass;
+			else 
+				throw new Error("[extend] Not a valid superclass constructor");
+
+			// copy the standard static properties from Base to new class
+			for (staticProp in base) {
+				if (base.hasOwnProperty(staticProp)) {
+					cls[staticProp] = base[staticProp];
+				}
+			}
+			
+			temp.prototype = parent.prototype;
+			cls.prototype = new temp();
+
+			// if the given parent class doesn't have the correct basic properties copy them from the Base class
+			if (!('$class' in parent)) {
+				for (i in base.prototype) {
+					if (!parent.prototype[i]) {
+						parent.prototype[i] = base.prototype[i];
+					}
+				}
+				// correct reference in parent class to the parent class itself
+				parent.self = parent;
+			}
+
+			// create reference to this class for later use by inheriting classes
+			cls.prototype.self = cls;
+
+			// which constructor to use to create this new class
+			if (overrides.hasOwnProperty('constructor')) {
+				cls.prototype.constructor = cls;
+			}
+			else {
+				cls.prototype.constructor = parent.prototype.constructor;
+			}
+
+			// which class was the parent of this new class
+			cls.superclass = cls.prototype.superclass = parent.prototype;
+			
+			// extend the new class with the given new properties
+			cls.extend(overrides);
+			
+			// and return the new class
+			return cls;
+		}
+	});
+		
 	/********************************************************************************************
 	* System Singleton methods definition 														*
 	********************************************************************************************/
@@ -533,10 +591,20 @@
 		classes: {},
 		
 		/**
+		 * Extend superclass with given overrides and gives new class constructor back
+		 * @function
+		 * @param {Function} superclass
+		 * @param {Object} overrides
+		 * @return {Function} The subclass constructor from the <tt>overrides</tt> parameter, or a generated one if not provided.
+		 * @private
+		 */
+		extend: utils.extend,
+		 
+		/**
 		 * Creates a new class based on the given superclass and an object with overrides
 		 * @function
 		 * @param {string} name Name for this new class to create. Can be used to get an instantiated version
-		 * @param {string} superclass The superclass where the new class will be based on
+		 * @param {string} superclass (Optional) The superclass where the new class will be based on. If omitted the 'Base' class will be used
 		 * @param {Object} overrides The overrides that need to be applied to this class
 		 * @return {Function} The subclass constructor from the <tt>overrides</tt> parameter, or a generated one if not provided.
 		 */
@@ -606,71 +674,6 @@
 		},
 
 		/**
-		 * @private
-		 * @function
-		 * @param {Function} superclass
-		 * @param {Object} overrides
-		 * @return {Function} The subclass constructor from the <tt>overrides</tt> parameter, or a generated one if not provided.
-		 */
-		extend: function(superclass, overrides) {
-			var extend = superclass,
-				base = Base,
-				temp = function() {},
-				parent, i, k, ln, staticName, parentStatics,
-				cls = function() {
-					return this.constructor.apply(this, arguments);
-				},
-				staticProp;
-				
-			// copy the standard static properties from Base to new class
-			for (staticProp in Base) {
-				if (Base.hasOwnProperty(staticProp)) {
-					cls[staticProp] = Base[staticProp];
-				}
-			}
-			
-			// which class to extend, given one or the basic Base class
-			if (typeof extend === 'function' && extend !== Object) {
-				parent = extend;
-			}
-			else {
-				parent = base;
-			}
-
-			temp.prototype = parent.prototype;
-			cls.prototype = new temp();
-
-			// if the given parent class doesn't have the correct basic properties copy them from the Base class
-			if (!('$class' in parent)) {
-				for (i in base.prototype) {
-					if (!parent.prototype[i]) {
-						parent.prototype[i] = base.prototype[i];
-					}
-				}
-			}
-
-			// create reference to this class for later use by inheriting classes
-			cls.prototype.self = cls;
-
-			// which constructor to use to create this new class
-			if (overrides.hasOwnProperty('constructor')) {
-				cls.prototype.constructor = cls;
-			}
-			else {
-				cls.prototype.constructor = parent.prototype.constructor;
-			}
-
-			// which class was the parent of this new class
-			cls.superclass = cls.prototype.superclass = parent.prototype;
-			
-			// extend the new class with the given new properties
-			cls.extend(overrides);
-			
-			// and return the new class
-			return cls;
-		},
-		
-		/**
 		 *
 		 * @return {Object} Object with all utils functions
 		 */
@@ -692,10 +695,10 @@
 	 * All prototype and static members of this class are inherited by any other class
 	 */
 	// add base class to classes list. 
-	Base = system.classes[objEscStr + 'Base'] = function(){};
+	Base = system.classes[objEscStr + 'Base'] = function BaseClassConstructor(){};
 	// and extend the prototype in the classical way
 	Base.prototype = {
-		$className: 'Ext.Base',
+		$className: 'Base',
 
 		$class: Base,
 
@@ -712,7 +715,7 @@
 		 * @protected
 		 * @return {Object} this
 		 */
-		constructor: function() {
+		constructor: function BasePrototypeConstructor() {
 			return this;
 		},
 
@@ -812,14 +815,13 @@
 		},
 
 		/**
-		 * Add / override prototype properties of this class. This method is a {@link Ext.Function#flexSetter flexSetter}.
+		 * Add / override prototype properties of this class. This method is a {@link utils#flexSetter flexSetter}.
 		 * It can either accept an object of key - value pairs or 2 arguments of name - value.
-		 * @property implement
+		 * @property extend
 		 * @static
 		 * @type Function
-		 * @param {String/Object} name See {@link Ext.Function#flexSetter flexSetter}
-		 * @param {Mixed} value See {@link Ext.Function#flexSetter flexSetter}
-		 * @markdown
+		 * @param {String/Object} name See {@link utils#flexSetter flexSetter}
+		 * @param {Mixed} value See {@link utils#flexSetter flexSetter}
 		 */
 		extend: utils.flexSetter(function(name, value) {
 			if (utils.isObject(this.prototype[name]) && utils.isObject(value)) {
@@ -839,9 +841,8 @@
 		 * @property override
 		 * @static
 		 * @type Function
-		 * @param {String/Object} name See {@link Ext.Function#flexSetter flexSetter}
-		 * @param {Mixed} value See {@link Ext.Function#flexSetter flexSetter}
-		 * @markdown
+		 * @param {String/Object} name See {@link utils#flexSetter flexSetter}
+		 * @param {Mixed} value See {@link utils#flexSetter flexSetter}
 		 */
 		override: utils.flexSetter(function(name, value) {
 			if (utils.isObject(this.prototype[name]) && utils.isObject(value)) {
