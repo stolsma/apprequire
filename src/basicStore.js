@@ -39,7 +39,6 @@
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 		objEscStr = '_',										// Object property escape string
 
 	/**
@@ -47,7 +46,7 @@
 	 * @extends Base
 	 * A generic store for objects/id combinations
 	 */
-	StoreClass = {
+	Store = {
 		/**
 		 * The location where the objects are stored
 		 * @type Object
@@ -56,8 +55,9 @@
 		/**
 		 * The constructor of this class
 		 * @constructor
+		 * @param {System} sys The CommonJS System this Store is working in.
 		 */
-		constructor: function() {
+		constructor: function(sys) {
 			this.store = {};										// initialize store
 		},
 	
@@ -106,18 +106,13 @@
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('Store', StoreClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'Store',
-			addClass: addClass	
+			Store: Store	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
 	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+		exports.Store = Store;
 })();

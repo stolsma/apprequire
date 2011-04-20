@@ -169,13 +169,14 @@ var require, exports, module, window;
 	
 	/**
 	 * Create a new CommonJS context
+	 * @param {System} system The CommonJS System this new Context will be working in.
 	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
 	 * @param {Array} modules Array of standard modules to add to the main Module System
 	 * @return {Context} The created context
 	 */
-	function createNewContext(cfg, modules) {
+	function createNewContext(system, cfg, modules) {
 		modules = (modules || systemModules);
-		return system.instantiate(cfg.system.context, cfg, modules);
+		return system.instantiate(cfg.system.context, system, cfg, modules);
 	}
 	
 	/**
@@ -190,7 +191,7 @@ var require, exports, module, window;
 		delete cfg.env.module.addClass;
 
 		// create context with current cfg, and the System Module list.
-		context = createNewContext(cfg, systemModules);
+		context = createNewContext(system, cfg, systemModules);
 			
 		// debug info ??
 		if (cfg.debug) {
@@ -303,7 +304,8 @@ var require, exports, module, window;
 			system = cls.system;
 			return;
 		} else if (system !== UNDEF) {
-			cls.addClass(system);
+			//cls.addClass(system);
+			system.addClass(cls.name, cls[cls.name]);
 			// check if all modules and classes are now loaded. If true then startup first context
 			bootstrapReady(cfg);
 		} else
@@ -1275,7 +1277,6 @@ var require, exports, module, window;
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 		objEscStr = '_',										// Object property escape string
 
 	/**
@@ -1283,7 +1284,7 @@ var require, exports, module, window;
 	 * @extends Base
 	 * A generic store for objects/id combinations
 	 */
-	StoreClass = {
+	Store = {
 		/**
 		 * The location where the objects are stored
 		 * @type Object
@@ -1292,8 +1293,9 @@ var require, exports, module, window;
 		/**
 		 * The constructor of this class
 		 * @constructor
+		 * @param {System} sys The CommonJS System this Store is working in.
 		 */
-		constructor: function() {
+		constructor: function(sys) {
 			this.store = {};										// initialize store
 		},
 	
@@ -1342,20 +1344,15 @@ var require, exports, module, window;
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('Store', StoreClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'Store',
-			addClass: addClass	
+			Store: Store	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
 	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+		exports.Store = Store;
 })();
 
 /*-------------------------------------------------------------------------------------\
@@ -1399,7 +1396,6 @@ var require, exports, module, window;
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 
 		//The following are module state constants
 		INIT = 'INIT',
@@ -1408,21 +1404,26 @@ var require, exports, module, window;
 	/********************************************************************************************
 	* Generic Module implemented as Module Class												*
 	********************************************************************************************/
-	ModuleClass = {
+	Module = {
 		/**
 		 * Module class definition
+		 * @param {System} sys The CommonJS System this Module is working in.
 		 * @param {string} id The global id of this Module
 		 */
-		constructor: function(id, deps, factoryFn, ms) {
-			this.id = id;																// The full top level id of this module in this system
-			this.deps = deps;															// The module dependencies (The full top level id's)
-			this.factoryFn = factoryFn;													// Factory Function
-			this.ms = ms;																// The module system this module is defined in
+		constructor: function(sys, id, deps, factoryFn, ms) {
+			var me = this;
 			
-			this.exports = {};															// The exports object for this module
-			this.module = null;															// The module variable for the factory function
+			// save the system we depend on
+			me.system = sys; 
+			me.id = id;																	// The full top level id of this module in this system
+			me.deps = deps;																// The module dependencies (The full top level id's)
+			me.factoryFn = factoryFn;													// Factory Function
+			me.ms = ms;																	// The module system this module is defined in
 			
-			this.state = INIT;															// Module instance is in INIT state.
+			me.exports = {};															// The exports object for this module
+			me.module = null;															// The module variable for the factory function
+			
+			me.state = INIT;															// Module instance is in INIT state.
 		},
 	
 		/**
@@ -1478,7 +1479,7 @@ var require, exports, module, window;
 				// need reference to module object with id and uri of this module
 				// do mixin of result and this.exports
 				this.state = READY;	// set to true before initialization call because module can request itself.. (circular dep problems) 
-				system.getUtils().mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
+				this.system.getUtils().mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
 			}
 			
 			// if READY then return this module exports else return null 
@@ -1523,20 +1524,15 @@ var require, exports, module, window;
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('Module', ModuleClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'Module',
-			addClass: addClass	
+			Module: Module	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
 	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+		exports.Module = Module;
 })();
 
 /*-------------------------------------------------------------------------------------\
@@ -1582,13 +1578,12 @@ var require, exports, module, window;
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 	
 	/**
 	 * @class ModuleSystem
 	 * Default CommonJS Module System definition.
 	 */
-	ModuleSystemClass = {
+	ModuleSystem = {
 		/**
 		 * Store of the defined modules for this Module System
 		 * @property store
@@ -1597,15 +1592,18 @@ var require, exports, module, window;
 		/**
 		 * Module System class definition
 		 * @constructor
+		 * @param {System} sys The CommonJS System this ModuleSystem is working in.
 		 * @param {cfgObject} cfg The standard cfg object.
 		 */
-		constructor: function(cfg) {
+		constructor: function(sys, cfg) {
 			var me = this;
 			
+			// save the system we depend on
+			me.system = sys; 
 			// Classname for modules
 			me.mClass = cfg.system.module;
 			// create the module store for this module system
-			me.store = system.instantiate(cfg.system.store);
+			me.store = me.system.instantiate(cfg.system.store, sys);
 		},
 
 		/**
@@ -1634,7 +1632,7 @@ var require, exports, module, window;
 		memoize: function MSMemoize(id, deps, factoryFn){
 			// create Module Instance and save in module store if not already exists
 			if (!this.store.exist(id)) {
-				this.store.set(id, system.instantiate(this.mClass, id, deps, factoryFn, this));
+				this.store.set(id, this.system.instantiate(this.mClass, this.system, id, deps, factoryFn, this));
 				return true;
 			}
 			
@@ -1721,20 +1719,15 @@ var require, exports, module, window;
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('ModuleSystem', ModuleSystemClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'ModuleSystem',
-			addClass: addClass	
+			ModuleSystem: ModuleSystem	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
 	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+		exports.ModuleSystem = ModuleSystem;
 })();
 
 /*-------------------------------------------------------------------------------------\
@@ -1780,23 +1773,25 @@ var require, exports, module, window;
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 		
 	/**
 	 * @class Context
 	 * Default CommonJS Context environment definition.
 	 */
-	ContextClass = {
+	Context = {
 		/**
 		 * The Context Class Constructor
 		 * @constructor
+		 * @param {System} sys The CommonJS System this context is working in.
 		 * @param {cfgObject} cfg The standard cfg object.
 		 * @param {Array} modules Array of standard modules to add to the Core Module System
 		 */
-		constructor: function(cfg, modules) {
+		constructor: function(sys, cfg, modules) {
 			var me = this,
 				cfgSystem = cfg.system;
 			
+			// save the system we depend on
+			me.system = sys; 
 			// save the config
 			me.cfg = cfg;
 			me.env = cfg.env;
@@ -1804,7 +1799,7 @@ var require, exports, module, window;
 			me.storeClass = cfgSystem.store;
 			
 			// create a store for loading resources
-			me.loading = system.instantiate(me.storeClass);
+			me.loading = me.system.instantiate(me.storeClass, sys);
 			
 			// create core module system
 			me.startupCMS(modules);
@@ -1823,7 +1818,7 @@ var require, exports, module, window;
 			
 			// TODO Check if cfg.location is there else throw with error ??
 			// create the Main Module System
-			ms = system.instantiate(me.msClass, me.cfg);
+			ms = me.system.instantiate(me.msClass, me.system, me.cfg);
 			// save the main Module System with other system info for later retrieval
 			me.setMS(ms, me.cfg.location);
 			// extend Main Module System API
@@ -1873,7 +1868,7 @@ var require, exports, module, window;
 		startupLoaders: function(ms, loaders){
 			var base, loader, loaderMod, i;
 			// create interface layer to keep track of multiple loaders
-			base = this.loaderBase = system.instantiate(this.cfg.system.loaderBase);
+			base = this.loaderBase = this.system.instantiate(this.cfg.system.loaderBase, this.system, this.cfg);
 			// add the defined loaders
 			for (i=0; loader = loaders[i]; i++) {
 				// create loaderbase and add loader
@@ -1901,7 +1896,7 @@ var require, exports, module, window;
 			// run through all required dependencies and if needed create dependency descriptor
 			for (i=0; dep = deps[i]; i++) {
 				//normalize dependency by cloning
-				depDescr = system.getUtils().clone(msDescr);
+				depDescr = this.system.getUtils().clone(msDescr);
 				// create url from uri and dependency id
 				depDescr.url = depDescr.uri + dep;
 				
@@ -2025,20 +2020,15 @@ var require, exports, module, window;
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('Context', ContextClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'Context',
-			addClass: addClass	
+			Context: Context	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
-	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+	else if (exports !== UNDEF) 
+		exports.Context = Context;
 })();
 
 /*-------------------------------------------------------------------------------------\
@@ -2082,20 +2072,22 @@ var require, exports, module, window;
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 		
 	/********************************************************************************************
 	* Generic Loader implemented as Class														*
 	********************************************************************************************/
-	LoaderBaseClass = {
+	LoaderBase = {
 		/**
 		 * Constructor
+		 * @constructor
+		 * @param {System} sys The CommonJS System this LoaderBase is working in.
+		 * @param {cfgObject} cfg The standard cfg object.
 		 */
-		constructor: function() {
+		constructor: function(sys, cfg) {
 			/**
 			 * The store with the defined scheme / SpecificLoader combinations
 			 */
-			this.loaders = system.instantiate('Store');
+			this.loaders = sys.instantiate(cfg.system.store, sys);
 		},
 		
 		/**
@@ -2160,20 +2152,15 @@ var require, exports, module, window;
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('LoaderBase', LoaderBaseClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'LoaderBase',
-			addClass: addClass	
+			LoaderBase: LoaderBase	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
 	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+		exports.LoaderBase = LoaderBase;
 })();
 
 /*-------------------------------------------------------------------------------------\

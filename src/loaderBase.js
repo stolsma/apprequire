@@ -39,20 +39,22 @@
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 		
 	/********************************************************************************************
 	* Generic Loader implemented as Class														*
 	********************************************************************************************/
-	LoaderBaseClass = {
+	LoaderBase = {
 		/**
 		 * Constructor
+		 * @constructor
+		 * @param {System} sys The CommonJS System this LoaderBase is working in.
+		 * @param {cfgObject} cfg The standard cfg object.
 		 */
-		constructor: function() {
+		constructor: function(sys, cfg) {
 			/**
 			 * The store with the defined scheme / SpecificLoader combinations
 			 */
-			this.loaders = system.instantiate('Store');
+			this.loaders = sys.instantiate(cfg.system.store, sys);
 		},
 		
 		/**
@@ -117,18 +119,13 @@
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('LoaderBase', LoaderBaseClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'LoaderBase',
-			addClass: addClass	
+			LoaderBase: LoaderBase	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
 	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+		exports.LoaderBase = LoaderBase;
 })();

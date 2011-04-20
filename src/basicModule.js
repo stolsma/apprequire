@@ -39,7 +39,6 @@
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 
 		//The following are module state constants
 		INIT = 'INIT',
@@ -48,21 +47,26 @@
 	/********************************************************************************************
 	* Generic Module implemented as Module Class												*
 	********************************************************************************************/
-	ModuleClass = {
+	Module = {
 		/**
 		 * Module class definition
+		 * @param {System} sys The CommonJS System this Module is working in.
 		 * @param {string} id The global id of this Module
 		 */
-		constructor: function(id, deps, factoryFn, ms) {
-			this.id = id;																// The full top level id of this module in this system
-			this.deps = deps;															// The module dependencies (The full top level id's)
-			this.factoryFn = factoryFn;													// Factory Function
-			this.ms = ms;																// The module system this module is defined in
+		constructor: function(sys, id, deps, factoryFn, ms) {
+			var me = this;
 			
-			this.exports = {};															// The exports object for this module
-			this.module = null;															// The module variable for the factory function
+			// save the system we depend on
+			me.system = sys; 
+			me.id = id;																	// The full top level id of this module in this system
+			me.deps = deps;																// The module dependencies (The full top level id's)
+			me.factoryFn = factoryFn;													// Factory Function
+			me.ms = ms;																	// The module system this module is defined in
 			
-			this.state = INIT;															// Module instance is in INIT state.
+			me.exports = {};															// The exports object for this module
+			me.module = null;															// The module variable for the factory function
+			
+			me.state = INIT;															// Module instance is in INIT state.
 		},
 	
 		/**
@@ -118,7 +122,7 @@
 				// need reference to module object with id and uri of this module
 				// do mixin of result and this.exports
 				this.state = READY;	// set to true before initialization call because module can request itself.. (circular dep problems) 
-				system.getUtils().mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
+				this.system.getUtils().mixin(this.exports, this.factoryFn.call(null, this.returnRequire(), this.exports, this.returnModule()));
 			}
 			
 			// if READY then return this module exports else return null 
@@ -163,18 +167,13 @@
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('Module', ModuleClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'Module',
-			addClass: addClass	
+			Module: Module	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
 	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+		exports.Module = Module;
 })();

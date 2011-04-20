@@ -41,13 +41,12 @@
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 	
 	/**
 	 * @class ModuleSystem
 	 * Default CommonJS Module System definition.
 	 */
-	ModuleSystemClass = {
+	ModuleSystem = {
 		/**
 		 * Store of the defined modules for this Module System
 		 * @property store
@@ -56,15 +55,18 @@
 		/**
 		 * Module System class definition
 		 * @constructor
+		 * @param {System} sys The CommonJS System this ModuleSystem is working in.
 		 * @param {cfgObject} cfg The standard cfg object.
 		 */
-		constructor: function(cfg) {
+		constructor: function(sys, cfg) {
 			var me = this;
 			
+			// save the system we depend on
+			me.system = sys; 
 			// Classname for modules
 			me.mClass = cfg.system.module;
 			// create the module store for this module system
-			me.store = system.instantiate(cfg.system.store);
+			me.store = me.system.instantiate(cfg.system.store, sys);
 		},
 
 		/**
@@ -93,7 +95,7 @@
 		memoize: function MSMemoize(id, deps, factoryFn){
 			// create Module Instance and save in module store if not already exists
 			if (!this.store.exist(id)) {
-				this.store.set(id, system.instantiate(this.mClass, id, deps, factoryFn, this));
+				this.store.set(id, this.system.instantiate(this.mClass, this.system, id, deps, factoryFn, this));
 				return true;
 			}
 			
@@ -180,18 +182,13 @@
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('ModuleSystem', ModuleSystemClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'ModuleSystem',
-			addClass: addClass	
+			ModuleSystem: ModuleSystem	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
 	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+		exports.ModuleSystem = ModuleSystem;
 })();

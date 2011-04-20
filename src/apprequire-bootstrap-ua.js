@@ -169,13 +169,14 @@ var require, exports, module, window;
 	
 	/**
 	 * Create a new CommonJS context
+	 * @param {System} system The CommonJS System this new Context will be working in.
 	 * @param {Object} cfg Normalized cfg object with all possible cfg items filled with correct settings
 	 * @param {Array} modules Array of standard modules to add to the main Module System
 	 * @return {Context} The created context
 	 */
-	function createNewContext(cfg, modules) {
+	function createNewContext(system, cfg, modules) {
 		modules = (modules || systemModules);
-		return system.instantiate(cfg.system.context, cfg, modules);
+		return system.instantiate(cfg.system.context, system, cfg, modules);
 	}
 	
 	/**
@@ -190,7 +191,7 @@ var require, exports, module, window;
 		delete cfg.env.module.addClass;
 
 		// create context with current cfg, and the System Module list.
-		context = createNewContext(cfg, systemModules);
+		context = createNewContext(system, cfg, systemModules);
 			
 		// debug info ??
 		if (cfg.debug) {
@@ -303,7 +304,8 @@ var require, exports, module, window;
 			system = cls.system;
 			return;
 		} else if (system !== UNDEF) {
-			cls.addClass(system);
+			//cls.addClass(system);
+			system.addClass(cls.name, cls[cls.name]);
 			// check if all modules and classes are now loaded. If true then startup first context
 			bootstrapReady(cfg);
 		} else

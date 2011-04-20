@@ -41,23 +41,25 @@
  */
 (function() {
 	var UNDEF,													// undefined constant for comparison functions
-		system,													// system singleton definition in this private scope
 		
 	/**
 	 * @class Context
 	 * Default CommonJS Context environment definition.
 	 */
-	ContextClass = {
+	Context = {
 		/**
 		 * The Context Class Constructor
 		 * @constructor
+		 * @param {System} sys The CommonJS System this context is working in.
 		 * @param {cfgObject} cfg The standard cfg object.
 		 * @param {Array} modules Array of standard modules to add to the Core Module System
 		 */
-		constructor: function(cfg, modules) {
+		constructor: function(sys, cfg, modules) {
 			var me = this,
 				cfgSystem = cfg.system;
 			
+			// save the system we depend on
+			me.system = sys; 
 			// save the config
 			me.cfg = cfg;
 			me.env = cfg.env;
@@ -65,7 +67,7 @@
 			me.storeClass = cfgSystem.store;
 			
 			// create a store for loading resources
-			me.loading = system.instantiate(me.storeClass);
+			me.loading = me.system.instantiate(me.storeClass, sys);
 			
 			// create core module system
 			me.startupCMS(modules);
@@ -84,7 +86,7 @@
 			
 			// TODO Check if cfg.location is there else throw with error ??
 			// create the Main Module System
-			ms = system.instantiate(me.msClass, me.cfg);
+			ms = me.system.instantiate(me.msClass, me.system, me.cfg);
 			// save the main Module System with other system info for later retrieval
 			me.setMS(ms, me.cfg.location);
 			// extend Main Module System API
@@ -134,7 +136,7 @@
 		startupLoaders: function(ms, loaders){
 			var base, loader, loaderMod, i;
 			// create interface layer to keep track of multiple loaders
-			base = this.loaderBase = system.instantiate(this.cfg.system.loaderBase);
+			base = this.loaderBase = this.system.instantiate(this.cfg.system.loaderBase, this.system, this.cfg);
 			// add the defined loaders
 			for (i=0; loader = loaders[i]; i++) {
 				// create loaderbase and add loader
@@ -162,7 +164,7 @@
 			// run through all required dependencies and if needed create dependency descriptor
 			for (i=0; dep = deps[i]; i++) {
 				//normalize dependency by cloning
-				depDescr = system.getUtils().clone(msDescr);
+				depDescr = this.system.getUtils().clone(msDescr);
 				// create url from uri and dependency id
 				depDescr.url = depDescr.uri + dep;
 				
@@ -286,18 +288,13 @@
 	/********************************************************************************************
 	* API generation																			*
 	********************************************************************************************/
-	function addClass(sys) {
-		system = sys;
-		system.addClass('Context', ContextClass);
-	};
-	
 	// call module.class if that function exists to signal addition of a class (for Modules/2.0 environment)
 	if (module.addClass !== UNDEF)
 		module.addClass({
 			name: 'Context',
-			addClass: addClass	
+			Context: Context	
 		})
 	// check if exports variable exists (when called as CommonJS 1.1 module)
-	else if (exports !== UNDEF)
-		exports.addClass = addClass;
+	else if (exports !== UNDEF) 
+		exports.Context = Context;
 })();
