@@ -14,10 +14,10 @@ The only thing that needs to be done to use CommonJS modules and packages in eve
 
 There are two way's to startup the system, use the data-context attribute or by calling exports.boot(cfg)
 
-data-context example ([examples/datacontext](https://github.com/stolsma/apprequire/tree/framework/examples/datacontext)):
+data-context example ([examples/datacontext](https://github.com/stolsma/apprequire/tree/master/examples/datacontext)):
 	<script data-context="{&#34;location&#34;: &#34;./modules/&#34;, &#34;main&#34;: &#34;program&#34;, &#34;timeout&#34;: 2000}" src="../apprequire-debug.js"></script>
 
-exports.boot example ([examples/boot](https://github.com/stolsma/apprequire/tree/framework/examples/boot)):
+exports.boot example ([examples/boot](https://github.com/stolsma/apprequire/tree/master/examples/boot)):
 	<script src="../apprequire-debug.js"></script>
 	<script>
 		exports.boot({
